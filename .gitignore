@@ -1,15 +1,18 @@
 # Autotools generated files
 .deps/
 autom4te.cache/
+Makefile
 Makefile.in
 aclocal.m4
 compile
 config.log
 config.status
+config.h
 depcomp
 fbt
 install-sh
 missing
+stamp-h1
 
 # Binaries
 fbt
