@@ -1,0 +1,10 @@
+# Autotools generated files
+Makefile.in
+
+# Binaries
+fb
+*.o
+*.d
+
+# Test files
+pic/*
