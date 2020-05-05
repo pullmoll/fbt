@@ -13,9 +13,10 @@ buffer which is memory mapped into the program's address space.
 There's also code to directly write glyphs into the frame buffer.
 A very basic and simple fb_printf() uses an integrated 6x8 font.
 
+```
 Usage: fbt [OPTIONS] <image.ext> […]
 Where [OPTIONS] is one or more of:
 -u        Up scale small images to the TFT size.
 -v        Be verbose.
 -fb=<dev> Use frame buffer device <dev> (e.g. /dev/fb2)
-
+```
