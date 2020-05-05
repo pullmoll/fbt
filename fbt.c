@@ -29,18 +29,50 @@
  * SUCH DAMAGE.
  ******************************************************************************/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdarg.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <linux/fb.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
+#if defined(HAVE_CONFIG_H)
+#include "config.h"
+#endif
 
+#if defined(HAVE_STDLIB_H)
+#include <stdlib.h>
+#endif
+#if defined(HAVE_STDIO_H)
+#include <stdio.h>
+#endif
+#if defined(HAVE_STRING_H)
+#include <string.h>
+#endif
+#if defined(HAVE_STDARG_H)
+#include <stdarg.h>
+#endif
+#if defined(HAVE_STDINT_H)
+#include <stdint.h>
+#endif
+#if defined(HAVE_UNISTD_H)
+#include <unistd.h>
+#endif
+#if defined(HAVE_SYS_IOCTL_H)
+#include <sys/ioctl.h>
+#endif
+#if defined(HAVE_SYS_MMAN_H)
+#include <sys/mman.h>
+#endif
+#if defined(HAVE_SYS_TYPES_H)
+#include <sys/types.h>
+#endif
+#if defined(HAVE_SYS_STAT_H)
+#include <sys/stat.h>
+#endif
+#if defined(HAVE_FCNTL_H)
+#include <fcntl.h>
+#endif
+#if defined(HAVE_LINUX_FB_H)
+#include <linux/fb.h>
+#endif
+
+#if defined(HAVE_GD_H)
 #include <gd.h>
+#endif
 
 #include "font.h"
 
@@ -50,6 +82,9 @@ static const char* fb_devname = NULL;
 static struct fb_fix_screeninfo finfo;
 static struct fb_var_screeninfo vinfo;
 static int fbfd = -1;
+static int fb_w = 0;
+static int fb_h = 0;
+static int fb_bpp = 0;
 static size_t fb_size = 0;
 static size_t fb_stride = 0;
 static uint8_t *fbp = MAP_FAILED;
@@ -59,7 +94,7 @@ static int cury = 0;
 /**
  * @brief Callback for libgd in case of an error
  */
-static const void gd_error(int err, const char* format, va_list ap)
+static const void gd_error(int priorty, const char* format, va_list ap)
 {
 	vfprintf(stderr, format, ap);
 }
@@ -113,8 +148,11 @@ static int fb_init(const char* devname)
     }
     fb_devname = devname;
 
-    // Figure out the size of the screen in bytes
-    fb_size = vinfo.xres * vinfo.yres * vinfo.bits_per_pixel / 8;
+    // Figure out the width, height, bpp, size and stridt of the frame buffer
+    fb_w = vinfo.xres;
+    fb_h = vinfo.yres;
+    fb_bpp = vinfo.bits_per_pixel;
+    fb_size = fb_w * fb_h * fb_bpp / 8;
     fb_stride = finfo.line_length;
 
     // Try to memory map the framebuffer
@@ -196,7 +234,7 @@ uint32_t fb_getpixel(int x, int y)
     uint32_t pix = 0;
     int64_t pos;
 
-    if (x < 0 || x >= vinfo.xres || y < 0 || y >= vinfo.yres) {
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
         return 0;
     }
 
@@ -251,7 +289,7 @@ void fb_setpixel(int x, int y, uint32_t color)
 {
     int64_t pos;
 
-    if (x < 0 || x >= vinfo.xres || y < 0 || y >= vinfo.yres) {
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
         return;
     }
 
@@ -358,10 +396,10 @@ static void fb_puttext(int *x, int *y, int color, const char* text)
 
         if (advance) {
             *x += fnt->w;
-            if (*x + fnt->w >= vinfo.xres) {
+            if (*x + fnt->w >= fb_w) {
                 *x = 0;
                 *y += fnt->h;
-                if (*y + fnt->h >= vinfo.yres) {
+                if (*y + fnt->h >= fb_h) {
 		    *y -= fnt->h;
 		    fb_shift(2, fnt->h);
                 }
@@ -417,10 +455,10 @@ static inline uint16_t rgb32_to_16(const uint16_t r, const uint16_t g, const uin
 void fb_dump(gdImagePtr im)
 {
     if (16 == vinfo.bits_per_pixel) {
-        for (int y = 0; y < vinfo.yres; y++) {
+        for (int y = 0; y < fb_h; y++) {
             const int pos = y * fb_stride;
             uint8_t* dst = &fbp[pos];
-            for (int x = 0; x < vinfo.xres; x++) {
+            for (int x = 0; x < fb_w; x++) {
     	        /* convert truecolor to RGB 565 */
         	int pix = gdImageGetTrueColorPixel(im, x, y);
         	const uint16_t r = gdTrueColorGetRed(pix);
@@ -433,10 +471,10 @@ void fb_dump(gdImagePtr im)
             }
         }
     } else {
-        for (int y = 0; y < vinfo.yres; y++) {
+        for (int y = 0; y < fb_h; y++) {
             const int pos = y * fb_stride;
             uint8_t* dst = &fbp[pos];
-            for (int x = 0; x < vinfo.xres; x++) {
+            for (int x = 0; x < fb_w; x++) {
         	int pix = gdImageGetTrueColorPixel(im, x, y);
                 dst[0] = (uint8_t)(pix >>  0);
                 dst[1] = (uint8_t)(pix >>  8);
@@ -452,17 +490,15 @@ void fb_dump(gdImagePtr im)
  */
 void test_lines(void)
 {
-    gdImagePtr im = gdImageCreateTrueColor(vinfo.xres, vinfo.yres);
-    const int w = vinfo.xres;
-    const int h = vinfo.yres;
+    gdImagePtr im = gdImageCreateTrueColor(fb_w, fb_h);
 
-    for (int x = 0; x < w; x += 3) {
-    	gdImageLine(im, x, 0, w - 1 - x, h - 1, 0xffff);
+    for (int x = 0; x < fb_w; x += 3) {
+    	gdImageLine(im, x, 0, fb_w - 1 - x, fb_h - 1, 0xffff);
     	fb_dump(im);
     }
 
     for (int y = 0; y < vinfo.yres; y += 3) {
-    	gdImageLine(im, 0, y, w - 1, h - 1 - y, 0xffff);
+    	gdImageLine(im, 0, y, fb_w - 1, fb_h - 1 - y, 0xffff);
     	fb_dump(im);
     }
 
@@ -539,31 +575,31 @@ void load_image(const char* filename, int upscale)
     	return;
     }
 
-    const int srcw = gdImageSX(im1);
-    const int srch = gdImageSY(im1);
-    info("Loaded %s %dx%d %dbpp\n", filename, srcw, srch, gdImageTrueColor(im1) ? 32 : 8);
+    const int w_src = gdImageSX(im1);
+    const int h_src = gdImageSY(im1);
+    info("Loaded %s %dx%d %dbpp\n", filename, w_src, h_src, gdImageTrueColor(im1) ? 32 : 8);
 
-    im2 = gdImageCreateTrueColor(vinfo.xres, vinfo.yres);
-    if (upscale || srcw > vinfo.xres || srch > vinfo.yres) {
-        int dstw, dsth;
-        if (srcw >= srch) {
-            dstw = vinfo.xres;
-            dsth = srch * vinfo.yres / srcw;
+    im2 = gdImageCreateTrueColor(fb_w, fb_h);
+    if (upscale || w_src > fb_w || h_src > fb_h) {
+        int w_dst, h_dst;
+        if (w_src >= fb_w) {
+		w_dst = fb_w;
+		h_dst = h_src * fb_h / w_dst;
         } else {
-            dsth = vinfo.yres;
-            dstw = srcw * vinfo.xres / srch;
+		h_dst = fb_h;
+		w_dst = w_src * fb_w / h_dst;
         }
-        const int dstx = (vinfo.xres - dstw) / 2;
-        const int dsty = (vinfo.yres - dsth) / 2;
-        info("Resample to %dx%d at %d,%d\n", dstw, dsth, dstx, dsty);
-    	gdImageCopyResampled(im2, im1, dstx, dsty, 0, 0, dstw, dsth, srcw, srch);
+        const int dstx = (fb_w - w_dst) / 2;
+        const int dsty = (fb_h - h_dst) / 2;
+        info("Resample to %dx%d at %d,%d\n", w_dst, h_dst, dstx, dsty);
+    	gdImageCopyResampled(im2, im1, dstx, dsty, 0, 0, w_dst, h_dst, w_src, h_src);
     } else {
-        const int dstw = srcw;
-        const int dsth = srch;
-        const int dstx = (vinfo.xres - dstw) / 2;
-        const int dsty = (vinfo.yres - dsth) / 2;
-        info("Copy to %dx%d at %d,%d\n", dstw, dsth, dstx, dsty);
-    	gdImageCopy(im2, im1, dstx, dsty, 0, 0, srcw, srch);
+        const int w_dst = w_src;
+        const int h_dst = h_src;
+        const int dstx = (fb_w - w_dst) / 2;
+        const int dsty = (fb_h - h_dst) / 2;
+        info("Copy to %dx%d at %d,%d\n", w_dst, h_dst, dstx, dsty);
+    	gdImageCopy(im2, im1, dstx, dsty, 0, 0, w_src, h_src);
     }
     fb_dump(im2);
     gdImageDestroy(im2);
@@ -624,7 +660,7 @@ int main(int argc, char** argv)
 
     info("Using GD version %s (%s)\n", gdVersionString(), gdExtraVersion());
     info("Framebuffer '%s' is %dx%d, %dbpp\n",
-        fb_devname, vinfo.xres, vinfo.yres, vinfo.bits_per_pixel);
+        fb_devname, fb_w, fb_h, fb_bpp);
 
     if (argc < 2) {
     	test_lines();
