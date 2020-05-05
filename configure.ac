@@ -1,5 +1,6 @@
-AC_INIT([Frame buffer tool],1.0)
-AC_INIT_AUTOMAKE
-AC_PRG_CC
+AC_INIT([Frame Buffer Tool], 1.0)
+
+AM_INIT_AUTOMAKE
+AC_PROG_CC
 AC_CONFIG_FILES(Makefile)
 AC_OUTPUT

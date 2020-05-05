@@ -1,3 +1,4 @@
-bin_PROGRAMS = fb
-fb_prog_SOURCES = fb.c font.c
-fb_prog_HEADERS = font.h
+LDFLAGS += -L/usr/lib
+bin_PROGRAMS = fbt
+fbt_SOURCES = fbt.c font.c
+fbt_LDADD = -lgd

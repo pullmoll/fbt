@@ -1,8 +1,18 @@
 # Autotools generated files
+.deps/
+autom4te.cache/
 Makefile.in
+aclocal.m4
+compile
+config.log
+config.status
+depcomp
+fbt
+install-sh
+missing
 
 # Binaries
-fb
+fbt
 *.o
 *.d
 
