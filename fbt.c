@@ -372,22 +372,16 @@ static void fb_puttext(int *x, int *y, int color, const char* text)
 
 static size_t fb_vprintf(const char* format, va_list ap)
 {
-    size_t size = 2 * strlen(format);
-    size_t done;
+    size_t size = vsnprintf(NULL, 0, format, ap);
     char* buffer = malloc(size);
-    done = vsnprintf(buffer, size, format, ap);
-    while (done < 0 || done >= size) {
-        size *= 2;
-        buffer = realloc(buffer, size);
-        done = vsnprintf(buffer, size, format, ap);
-    }
     if (NULL == buffer) {
         perror("fb_vprintf()");
         return (size_t)-1;
     }
+    vsnprintf(buffer, size, format, ap);
     fb_puttext(&curx, &cury, 0x00ffffff, buffer);
     free(buffer);
-    return done;
+    return size;
 }
 
 static size_t fb_printf(const char* format, ...)
@@ -590,10 +584,13 @@ void load_image(const char* filename, int upscale)
  */
 void usage(char** argv)
 {
-    const char* program = strrchr(argv[0], '/') ?
-    	strrchr(argv[0], '/') + 1 : argv[0];
-    fprintf(stderr, "Usage: %s <imagefile.ext>\n", program);
-    fb_printf("Usage: %s <imagefile.ext>\n", program);
+    const char* program = basename(argv[0]);
+    fprintf(stderr, "Usage: %s [OPTIONS] <imagefile.ext>\n", program);
+    fprintf(stderr, "Where [OPTIONS] may be one or more of:\n");
+    fprintf(stderr, "-u          Up scale small images to TFT size\n");
+    fprintf(stderr, "-v          Be verbose\n");
+    fprintf(stderr, "-fb=<dev>   Use frame buffer device <dev> (e.g. /dev/fb2)\n");
+    fb_printf("Usage: %s [OPTIONS] <imagefile.ext>\n", program);
 }
 
 int main(int argc, char** argv)
@@ -608,6 +605,10 @@ int main(int argc, char** argv)
         }
     	if (!strcmp(argv[i], "-u")) {
             upscale = 1;
+            continue;
+    	}
+    	if (!strcmp(argv[i], "-v")) {
+            verbose = 1;
             continue;
     	}
     }
@@ -626,7 +627,7 @@ int main(int argc, char** argv)
         fb_devname, vinfo.xres, vinfo.yres, vinfo.bits_per_pixel);
 
     if (argc < 2) {
-    	test_text();
+    	test_lines();
     	usage(argv);
     	return 1;
     }
