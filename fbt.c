@@ -33,21 +33,14 @@
 #include "config.h"
 #endif
 
-#if defined(HAVE_STDLIB_H)
 #include <stdlib.h>
-#endif
-#if defined(HAVE_STDIO_H)
 #include <stdio.h>
-#endif
-#if defined(HAVE_STRING_H)
 #include <string.h>
-#endif
-#if defined(HAVE_STDARG_H)
 #include <stdarg.h>
-#endif
 #if defined(HAVE_STDINT_H)
 #include <stdint.h>
 #endif
+
 #if defined(HAVE_UNISTD_H)
 #include <unistd.h>
 #endif
@@ -640,6 +633,7 @@ void usage(char** argv)
 int main(int argc, char** argv)
 {
     const char* fbdev = "/dev/fb1";
+    int nfiles = 0;
     int upscale = 0;
 
     for (int i = 1; i < argc; i++) {
@@ -655,6 +649,7 @@ int main(int argc, char** argv)
             verbose = 1;
             continue;
     	}
+	nfiles++;
     }
 
     atexit(fb_exit);
@@ -670,8 +665,8 @@ int main(int argc, char** argv)
     info("Framebuffer '%s' is %dx%d, %dbpp\n",
         fb_devname, fb_w, fb_h, fb_bpp);
 
-    if (argc < 2) {
-    	test_lines();
+    if (nfiles < 1) {
+    	test_text();
     	usage(argv);
     	return 1;
     }
