@@ -582,12 +582,20 @@ void load_image(const char* filename, int upscale)
     im2 = gdImageCreateTrueColor(fb_w, fb_h);
     if (upscale || w_src > fb_w || h_src > fb_h) {
         int w_dst, h_dst;
-        if (w_src >= fb_w) {
+        if (fb_w > fb_h) {
 		w_dst = fb_w;
-		h_dst = h_src * fb_h / w_dst;
+		h_dst = h_src * fb_w / w_src;
+		if (h_dst > fb_h) {
+			h_dst = fb_h;
+			w_dst = w_src * fb_h / h_src;
+		}
         } else {
 		h_dst = fb_h;
-		w_dst = w_src * fb_w / h_dst;
+		w_dst = w_src * fb_w / h_src;
+		if (w_dst > fb_w) {
+			w_dst = fb_w;
+			h_dst = h_src * fb_w / w_src;
+		}
         }
         const int dstx = (fb_w - w_dst) / 2;
         const int dsty = (fb_h - h_dst) / 2;
