@@ -1,7 +1,8 @@
-
 AC_PREREQ([2.69])
-AC_INIT([Frame Buffer Tool], 1.0.0, [pullmoll@t-online.de])
-AM_INIT_AUTOMAKE
+AC_INIT([Frame Buffer Tool],[1.0.0],[pullmoll@t-online.de])
+AM_INIT_AUTOMAKE(subdir-objects)
+AC_CONFIG_MACRO_DIRS([m4])
+LT_INIT
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
 

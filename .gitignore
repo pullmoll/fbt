@@ -1,11 +1,16 @@
 # Autotools generated files
 .deps/
+.libs/
+.dirstamp/
 autoscan.log
 autom4te.cache/
+m4/
 Makefile
 Makefile.in
 aclocal.m4
 compile
+config.guess
+config.sub
 config.log
 config.status
 config.h
@@ -13,8 +18,11 @@ configure.scan
 depcomp
 fbt
 install-sh
+libtool
+ltmain.sh
 missing
 stamp-h1
+*.la
 
 # Binaries
 fbt
