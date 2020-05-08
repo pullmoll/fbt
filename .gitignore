@@ -14,6 +14,7 @@ config.sub
 config.log
 config.status
 config.h
+configure
 configure.scan
 depcomp
 fbt
@@ -32,6 +33,7 @@ fbt
 
 # Test files
 pic/*
+img/*
 
 # Temporary files
 *~
