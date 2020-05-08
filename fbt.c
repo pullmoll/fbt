@@ -69,8 +69,10 @@
 
 #include "font.h"
 
+#define	DEFAULT_FB  "/dev/fb1"
+
 static int verbose = 0;
-static const fbfont_t* fnt = &font_6x8;
+static const fbfont_t* font = &font_6x8;
 static const char* fb_devname = NULL;
 static struct fb_fix_screeninfo finfo;
 static struct fb_var_screeninfo vinfo;
@@ -84,23 +86,24 @@ static uint8_t *fbp = MAP_FAILED;
 static int curx = 0;
 static int cury = 0;
 
-/**
- * @brief Callback for libgd in case of an error
- */
-static const void gd_error(int priorty, const char* format, va_list ap)
-{
-	vfprintf(stderr, format, ap);
-}
-
-static const void info(const char* format, ...)
+static void info(int priority, const char* format, ...)
 {
     va_list ap;
 
-    if (!verbose)
-        return;
+    if (priority <= verbose)
+	return;
     va_start(ap, format);
     vfprintf(stdout, format, ap);
     va_end(ap);
+}
+
+
+/**
+ * @brief Callback for libgd in case of an error
+ */
+static void gd_error(int priority, const char* format, va_list ap)
+{
+    info(priority, format, ap);
 }
 
 /**
@@ -112,6 +115,265 @@ static const char* basename(const char* filename)
 {
     const char* slash = strrchr(filename, '/');
     return slash ? slash + 1 : filename;
+}
+
+/**
+ * @brief Read a pixel value from the coordinates @p x and @p y
+ * The frame buffer has 1 bit per pixel
+ * @param x coordinate
+ * @param y coordinate
+ * @return pixel value
+ */
+static uint32_t fb_getpixel_1bpp(int x, int y)
+{
+    off_t pos =
+	    ((x + vinfo.xoffset) + 7) / 8 +
+	    (y + vinfo.yoffset) * fb_stride;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return 0;
+    }
+    return (fbp[pos] >> (x & 7)) & 1;
+}
+
+/**
+ * @brief Read a pixel value from the coordinates @p x and @p y
+ * The frame buffer has 8 bits per pixel (color index or gray scale)
+ * @param x coordinate
+ * @param y coordinate
+ * @return pixel value
+ */
+static uint32_t fb_getpixel_8bpp(int x, int y)
+{
+    off_t pos =
+	    (x + vinfo.xoffset) +
+	    (y + vinfo.yoffset) * fb_stride;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return 0;
+    }
+    return fbp[pos];
+}
+
+/**
+ * @brief Read a pixel value from the coordinates @p x and @p y
+ * The frame buffer has 16 bits per pixel (RGB 5-6-5)
+ * @param x coordinate
+ * @param y coordinate
+ * @return pixel value
+ */
+static uint32_t fb_getpixel_16bpp(int x, int y)
+{
+    off_t pos =
+	    (x + vinfo.xoffset) * 2 +
+	    (y + vinfo.yoffset) * fb_stride;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return 0;
+    }
+    return (((uint16_t)fbp[pos+0] << 0) |
+	    ((uint16_t)fbp[pos+1] << 8));
+}
+
+/**
+ * @brief Read a pixel value from the coordinates @p x and @p y
+ * The frame buffer has 24 bits per pixel (RGB 8-8-8)
+ * @param x coordinate
+ * @param y coordinate
+ * @return pixel value
+ */
+static uint32_t fb_getpixel_24bpp(int x, int y)
+{
+    off_t pos =
+	    (x + vinfo.xoffset) * 3 +
+	    (y + vinfo.yoffset) * fb_stride;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return 0;
+    }
+    return (((uint32_t)fbp[pos+0] <<  0) |
+	    ((uint32_t)fbp[pos+1] <<  8) |
+	    ((uint32_t)fbp[pos+2] << 16));
+}
+
+/**
+ * @brief Read a pixel value from the coordinates @p x and @p y
+ * The frame buffer has 32 bits per pixel (ARGB 8-8-8-8)
+ * @param x coordinate
+ * @param y coordinate
+ * @return pixel value
+ */
+static uint32_t fb_getpixel_32bpp(int x, int y)
+{
+    off_t pos =
+	    (x + vinfo.xoffset) * 4 +
+	    (y + vinfo.yoffset) * fb_stride;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return 0;
+    }
+    return (((uint32_t)fbp[pos+0] <<  0) |
+	    ((uint32_t)fbp[pos+1] <<  8) |
+	    ((uint32_t)fbp[pos+2] << 16) |
+	    ((uint32_t)fbp[pos+3] << 24));
+}
+
+/**
+ * @brief Write a pixel value at the coordinates @p x and @p y
+ * The frame buffer has 1 bit per pixel
+ * @param x coordinate
+ * @param y coordinate
+ * @param color pixel color to set
+ */
+void fb_setpixel_1bpp(int x, int y, uint32_t color)
+{
+    off_t pos =
+	    ((x + vinfo.xoffset) + 7) / 8 +
+	    (y + vinfo.yoffset) * fb_stride;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return;
+    }
+    if (color) {
+	fbp[pos] |= (0x80 >> (x & 7));
+    } else {
+	fbp[pos] &= ~(0x80 >> (x & 7));
+    }
+}
+
+/**
+ * @brief Write a pixel value at the coordinates @p x and @p y
+ * The frame buffer has 8 bits per pixel
+ * @param x coordinate
+ * @param y coordinate
+ * @param color pixel color to set
+ */
+void fb_setpixel_8bpp(int x, int y, uint32_t color)
+{
+    off_t pos =
+	    (x + vinfo.xoffset) +
+	    (y + vinfo.yoffset) * fb_stride;;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return;
+    }
+    fbp[pos] = (uint8_t) color;
+}
+
+/**
+ * @brief Write a pixel value at the coordinates @p x and @p y
+ * The frame buffer has 16 bits per pixel (RGB 5-6-5)
+ * @param x coordinate
+ * @param y coordinate
+ * @param color pixel color to set
+ */
+void fb_setpixel_16bpp(int x, int y, uint32_t color)
+{
+    off_t pos =
+	    (x + vinfo.xoffset) * 2 +
+	    (y + vinfo.yoffset) * fb_stride;;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return;
+    }
+    fbp[pos+0] = (uint8_t)(color >> 0);
+    fbp[pos+1] = (uint8_t)(color >> 8);
+}
+
+/**
+ * @brief Write a pixel value at the coordinates @p x and @p y
+ * The frame buffer has 24 bits per pixel (RGB 8-8-8)
+ * @param x coordinate
+ * @param y coordinate
+ * @param color pixel color to set
+ */
+void fb_setpixel_24bpp(int x, int y, uint32_t color)
+{
+    off_t pos =
+	    (x + vinfo.xoffset) * 3 +
+	    (y + vinfo.yoffset) * fb_stride;;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return;
+    }
+    fbp[pos+0] = (uint8_t)(color >>  0);
+    fbp[pos+1] = (uint8_t)(color >>  8);
+    fbp[pos+2] = (uint8_t)(color >> 16);
+}
+
+/**
+ * @brief Write a pixel value at the coordinates @p x and @p y
+ * The frame buffer has 32 bits per pixel (ARGB 8-8-8-8)
+ * @param x coordinate
+ * @param y coordinate
+ * @param color pixel color to set
+ */
+void fb_setpixel_32bpp(int x, int y, uint32_t color)
+{
+    off_t pos =
+	    (x + vinfo.xoffset) * 4 +
+	    (y + vinfo.yoffset) * fb_stride;;
+
+    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
+	return;
+    }
+    fbp[pos+0] = (uint8_t)(color >>  0);
+    fbp[pos+1] = (uint8_t)(color >>  8);
+    fbp[pos+2] = (uint8_t)(color >> 16);
+    fbp[pos+3] = (uint8_t)(color >> 24);
+}
+
+/** @brief pointer to the function to get a pixel for a specific depth */
+uint32_t (*fb_getpixel)(int x, int y) = fb_getpixel_32bpp;
+
+/** @brief pointer to the function to set a pixel for a specific depth */
+void (*fb_setpixel)(int x, int y, uint32_t color) = fb_setpixel_32bpp;
+
+/**
+ * @brief Draw a line from @p x1, @p y1 to @p x2, @p y2
+ *
+ * @param x1 line start x coordinate
+ * @param y1 line start y coordinate
+ * @param x2 line end x coordinate
+ * @param y2 line end y coordinate
+ * @param color pixel color
+ */
+static void fb_line(int x1, int y1, int x2, int y2, uint32_t color)
+{
+    const int sx = x1 < x2 ? 1 : -1;
+    const int sy = y1 < y2 ? 1 : -1;
+    const int dx = abs(x2 - x1);
+    const int dy = abs(y2 - y1);
+
+    if (dx >= dy) {
+	// Loop for x coordinates
+	int dda = dx / 2;
+	int x = x1;
+	int y = y1;
+	while (x != x2) {
+	    fb_setpixel(x, y, color);
+	    x += sx;
+	    dda -= dy;
+	    if (dda <= 0) {
+		y += sy;
+		dda += dx;
+	    }
+	}
+    } else {
+	// Loop for y coordinates
+	int dda = dy / 2;
+	int x = x1;
+	int y = y1;
+	while (y != y2) {
+	    fb_setpixel(x, y, color);
+	    y += sy;
+	    dda -= dx;
+	    if (dda <= 0) {
+		x += sx;
+		dda += dy;
+	    }
+	}
+    }
 }
 
 /**
@@ -130,13 +392,13 @@ static int fb_init(const char* devname)
 
     // Get fixed screen information
     if (ioctl(fbfd, FBIOGET_FSCREENINFO, &finfo) == -1) {
-        perror("Error: reading fixed information");
+	perror("Error: reading frame bufer fixed information");
         return -2;
     }
 
     // Get variable screen information
     if (ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo) == -1) {
-        perror("Error reading variable information");
+	perror("Error: reading frame bufer variable information");
         return -3;
     }
     fb_devname = devname;
@@ -148,6 +410,32 @@ static int fb_init(const char* devname)
     fb_size = fb_w * fb_h * fb_bpp / 8;
     fb_stride = finfo.line_length;
 
+    // Figure out which pixel getter/setter to use
+    switch (fb_bpp) {
+    case 1:
+	fb_getpixel = fb_getpixel_1bpp;
+	fb_setpixel = fb_setpixel_1bpp;
+	break;
+    case 8:
+	fb_getpixel = fb_getpixel_8bpp;
+	fb_setpixel = fb_setpixel_8bpp;
+	break;
+    case 16:
+	fb_getpixel = fb_getpixel_16bpp;
+	fb_setpixel = fb_setpixel_16bpp;
+	break;
+    case 24:
+	fb_getpixel = fb_getpixel_24bpp;
+	fb_setpixel = fb_setpixel_24bpp;
+	break;
+    case 32:
+	fb_getpixel = fb_getpixel_32bpp;
+	fb_setpixel = fb_setpixel_32bpp;
+	break;
+    default:
+	info(1, "Error: unsupported frame buffer bits-per-pixel %d\n", fb_bpp);
+    }
+
     // Try to memory map the framebuffer
     // Map the device to memory
     fbp = (uint8_t *) mmap(0, fb_size, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
@@ -155,7 +443,7 @@ static int fb_init(const char* devname)
         perror("Error: failed to map framebuffer device to memory");
         return -4;
     }
-    info("The framebuffer device was mapped to memory successfully.\n");
+    info(1, "The framebuffer device was mapped to memory at %p (%u).\n", fbp, fb_size);
 
     return 0;
 }
@@ -217,141 +505,24 @@ static void fb_shift(int dir, int pixels)
 }
 
 /**
- * @brief Read a pixel value from the coordinates @p x and @p y
- * @param x coordinate
- * @param y coordinate
- * @return pixel value
- */
-uint32_t fb_getpixel(int x, int y)
-{
-    uint32_t pix = 0;
-    int64_t pos;
-
-    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
-        return 0;
-    }
-
-    switch (vinfo.bits_per_pixel) {
-    case 1: // 1bpp
-        pos = ((x + vinfo.xoffset) + 7) / 8 +
-              (y + vinfo.yoffset) * fb_stride;
-        pix = (fbp[pos] >> (x & 7)) & 1;
-	break;
-
-    case 8: // 8bpp
-        pos = (x + vinfo.xoffset) +
-              (y + vinfo.yoffset) * fb_stride;
-        pix = fbp[pos];
-	break;
-
-    case 16: // 16bpp (RGB565)
-        pos = (x + vinfo.xoffset) * 2 +
-              (y + vinfo.yoffset) * fb_stride;
-        pix = (((uint16_t)fbp[pos+0]) | ((uint16_t)fbp[pos+1] << 8));
-	break;
-
-    case 24: // 24bpp (RGB888)
-        pos = (x + vinfo.xoffset) * 3 +
-              (y + vinfo.yoffset) * fb_stride;
-        pix =   ((uint32_t)fbp[pos+0] <<  0) |
-                ((uint32_t)fbp[pos+1] <<  8) |
-                ((uint32_t)fbp[pos+2] << 16);
-        // FIXME: handle vinfo.red, green, and blue
-	break;
-
-    case 32: // 32bpp (RGBA)
-        pos = (x + vinfo.xoffset) * 4 +
-              (y + vinfo.yoffset) * fb_stride;
-        pix =   ((uint32_t)fbp[pos+0] <<  0) |
-                ((uint32_t)fbp[pos+1] <<  8) |
-                ((uint32_t)fbp[pos+2] << 16) |
-                ((uint32_t)fbp[pos+3] << 24);
-        // FIXME: handle vinfo.red, green, blue, and alpha
-	break;
-    }
-    return pix;
-}
-
-/**
- * @brief Write a pixel value at the coordinates @p x and @p y
- * @param x coordinate
- * @param y coordinate
- * @param color pixel color to set
- */
-void fb_setpixel(int x, int y, uint32_t color)
-{
-    int64_t pos;
-
-    if (x < 0 || x >= fb_w || y < 0 || y >= fb_h) {
-        return;
-    }
-
-    switch (vinfo.bits_per_pixel) {
-    case 1: // 1bpp
-        pos = ((x + vinfo.xoffset) + 7) / 8 +
-              (y + vinfo.yoffset) * fb_stride;
-        if (color) {
-            fbp[pos] |= (0x80 >> (x & 7));
-        } else {
-            fbp[pos] &= ~(0x80 >> (x & 7));
-        }
-        break;
-
-    case 8: // 8bpp - color is a color map index
-        pos = (x + vinfo.xoffset) +
-              (y + vinfo.yoffset) * fb_stride;
-        fbp[pos] = (uint8_t)color;
-        break;
-
-    case 16: // 16bpp (RGB565) - color is 16 bits
-        pos = (x + vinfo.xoffset) * 2 +
-              (y + vinfo.yoffset) * fb_stride;
-        fbp[pos+0] = (uint8_t)(color >> 0);
-        fbp[pos+1] = (uint8_t)(color >> 8);
-        break;
-
-    case 24: // 24bpp (RGB888) - color is 0x00RRGGBB
-        pos = (x + vinfo.xoffset) * 3 +
-              (y + vinfo.yoffset) * fb_stride;
-        fbp[pos+0] = (uint8_t)(color >>  0);
-        fbp[pos+1] = (uint8_t)(color >>  8);
-        fbp[pos+2] = (uint8_t)(color >> 16);
-        break;
-
-    case 32: // 32bpp (RGBA) - color is 0xAARRGGBB
-        pos = (x + vinfo.xoffset) * 4 +
-              (y + vinfo.yoffset) * fb_stride;
-        fbp[pos+0] = (uint8_t)(color >>  0);
-        fbp[pos+1] = (uint8_t)(color >>  8);
-        fbp[pos+2] = (uint8_t)(color >> 16);
-        fbp[pos+3] = (uint8_t)(color >> 24);
-        break;
-    }
-}
-
-/**
  * @brief Put a character glyph into the framebuffer
  * @param x coordinate of top, left pixel
  * @param y coordinate of top, left pixel
  * @param color pixel color to set
  * @param ch ASCII character code to put
  */
-static void fb_putchar(int x, int y, int color, char ch)
+static void fb_putchar(int x, int y, int color, uint8_t ch)
 {
-    if (ch < 0)
+    if (ch >= font->count)
         return;
 
-    const size_t offs = fnt->fh * (uint8_t)ch;
-    int y0 = 0;
+    const size_t offs = font->h * (uint8_t)ch;
 
-    if (strchr(fnt->descender, ch))
-         y0 = 2;
-
-    for (int i = 0; i < fnt->fh; i++) {
-        uint8_t bits = fnt->data[offs+i] << (8 - fnt->fw);
-        for (int j = 0; bits && j < fnt->fw; bits <<= 1, j++) {
+    for (int y0 = 0; y0 < font->h; y0++) {
+        uint8_t bits = font->data[offs+y0] << (8 - font->w);
+        for (int x0 = 0; bits && x0 < font->w; bits <<= 1, x0++) {
             if (bits & 0x80)
-                fb_setpixel(x + j, y + i + y0, color);
+                fb_setpixel(x + x0, y + y0, color);
         }
     }
 }
@@ -370,10 +541,10 @@ static void fb_puttext(int *x, int *y, int color, const char* text)
         switch (text[i]) {
         case 10:
             *x = 0;
-            *y += fnt->h;
-            if (*y + fnt->h >= vinfo.yres) {
-	        *y -= fnt->h;
-	        fb_shift(2, fnt->h);
+            *y += font->h;
+	    if (*y + font->h >= fb_h) {
+	        *y -= font->h;
+	        fb_shift(2, font->h);
             }
             break;
 
@@ -382,19 +553,19 @@ static void fb_puttext(int *x, int *y, int color, const char* text)
             break;
 
         default:
-            fb_putchar(*x, *y, color, text[i]);
+            fb_putchar(*x, *y, color, (uint8_t)text[i]);
             advance = 1;
             break;
         }
 
         if (advance) {
-            *x += fnt->w;
-            if (*x + fnt->w >= fb_w) {
+            *x += font->w;
+            if (*x + font->w >= fb_w) {
                 *x = 0;
-                *y += fnt->h;
-                if (*y + fnt->h >= fb_h) {
-		    *y -= fnt->h;
-		    fb_shift(2, fnt->h);
+                *y += font->h;
+                if (*y + font->h >= fb_h) {
+		    *y -= font->h;
+		    fb_shift(2, font->h);
                 }
             }
         }
@@ -481,21 +652,21 @@ void fb_dump(gdImagePtr im)
 /**
  * @brief A simple test drawing lines across the TFT
  */
-void test_lines(void)
+void test_lines(int us)
 {
-    gdImagePtr im = gdImageCreateTrueColor(fb_w, fb_h);
-
     for (int x = 0; x < fb_w; x += 3) {
-    	gdImageLine(im, x, 0, fb_w - 1 - x, fb_h - 1, 0xffff);
-    	fb_dump(im);
+	fb_line(x, 0, fb_w - 1 - x, fb_h - 1, 0xffffff);
+	if (us) {
+		usleep(us);
+	}
     }
 
-    for (int y = 0; y < vinfo.yres; y += 3) {
-    	gdImageLine(im, 0, y, fb_w - 1, fb_h - 1 - y, 0xffff);
-    	fb_dump(im);
+    for (int y = 0; y < fb_h; y += 3) {
+	fb_line(0, y, fb_w - 1, fb_h - 1 - y, 0xfffffff);
+	if (us) {
+		usleep(us);
+	}
     }
-
-    gdImageDestroy(im);
 }
 
 void test_text()
@@ -570,11 +741,12 @@ void load_image(const char* filename, int upscale)
 
     const int w_src = gdImageSX(im1);
     const int h_src = gdImageSY(im1);
-    info("Loaded %s %dx%d %dbpp\n", filename, w_src, h_src, gdImageTrueColor(im1) ? 32 : 8);
+    info(1, "Loaded image '%s' %dx%d %dbpp\n", filename, w_src, h_src, gdImageTrueColor(im1) ? 32 : 8);
 
     im2 = gdImageCreateTrueColor(fb_w, fb_h);
+    int w_dst = w_src;
+    int h_dst = h_src;
     if (upscale || w_src > fb_w || h_src > fb_h) {
-        int w_dst, h_dst;
         if (fb_w > fb_h) {
 		w_dst = fb_w;
 		h_dst = h_src * fb_w / w_src;
@@ -590,17 +762,15 @@ void load_image(const char* filename, int upscale)
 			h_dst = h_src * fb_w / w_src;
 		}
         }
-        const int dstx = (fb_w - w_dst) / 2;
-        const int dsty = (fb_h - h_dst) / 2;
-        info("Resample to %dx%d at %d,%d\n", w_dst, h_dst, dstx, dsty);
-    	gdImageCopyResampled(im2, im1, dstx, dsty, 0, 0, w_dst, h_dst, w_src, h_src);
+	const int x_dst = (fb_w - w_dst) / 2;
+	const int y_dst = (fb_h - h_dst) / 2;
+	info(1, "Resample to %dx%d at %d,%d\n", w_dst, h_dst, x_dst, y_dst);
+	gdImageCopyResampled(im2, im1, x_dst, y_dst, 0, 0, w_dst, h_dst, w_src, h_src);
     } else {
-        const int w_dst = w_src;
-        const int h_dst = h_src;
-        const int dstx = (fb_w - w_dst) / 2;
-        const int dsty = (fb_h - h_dst) / 2;
-        info("Copy to %dx%d at %d,%d\n", w_dst, h_dst, dstx, dsty);
-    	gdImageCopy(im2, im1, dstx, dsty, 0, 0, w_src, h_src);
+	const int x_dst = (fb_w - w_dst) / 2;
+	const int y_dst = (fb_h - h_dst) / 2;
+	info(1, "Copy to %dx%d at %d,%d\n", w_dst, h_dst, x_dst, y_dst);
+	gdImageCopy(im2, im1, w_dst, w_dst, 0, 0, w_src, h_src);
     }
     fb_dump(im2);
     gdImageDestroy(im2);
@@ -612,7 +782,7 @@ void load_image(const char* filename, int upscale)
       *suffix = '\0';
 
     int x1 = 0;
-    int y1 = vinfo.yres - fnt->h;
+    int y1 = vinfo.yres - font->h;
     fb_puttext(&x1, &y1, 0xffffff, buff);
 }
 
@@ -626,13 +796,12 @@ void usage(char** argv)
     fprintf(stderr, "Where [OPTIONS] may be one or more of:\n");
     fprintf(stderr, "-u          Up scale small images to TFT size\n");
     fprintf(stderr, "-v          Be verbose\n");
-    fprintf(stderr, "-fb=<dev>   Use frame buffer device <dev> (e.g. /dev/fb2)\n");
-    fb_printf("Usage: %s [OPTIONS] <imagefile.ext>\n", program);
+    fprintf(stderr, "-fb=<dev>   Use frame buffer device <dev> (default %s)\n", DEFAULT_FB);
 }
 
 int main(int argc, char** argv)
 {
-    const char* fbdev = "/dev/fb1";
+    const char* fbdev = DEFAULT_FB;
     int nfiles = 0;
     int upscale = 0;
 
@@ -661,12 +830,13 @@ int main(int argc, char** argv)
     }
     fb_clear();
 
-    info("Using GD version %s (%s)\n", gdVersionString(), gdExtraVersion());
-    info("Framebuffer '%s' is %dx%d, %dbpp\n",
+    info(1, "Using GD version %s %s\n",
+	 gdVersionString(), gdExtraVersion());
+    info(1, "Framebuffer '%s' is %dx%d, %dbpp\n",
         fb_devname, fb_w, fb_h, fb_bpp);
 
     if (nfiles < 1) {
-    	test_text();
+    	test_lines(0);
     	usage(argv);
     	return 1;
     }

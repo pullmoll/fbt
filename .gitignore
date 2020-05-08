@@ -26,3 +26,4 @@ pic/*
 
 # Temporary files
 *~
+*.user
