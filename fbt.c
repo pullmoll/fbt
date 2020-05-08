@@ -53,7 +53,7 @@ static void info(int priority, const char* format, ...)
 {
     va_list ap;
 
-    if (priority <= verbose)
+    if (priority > verbose)
 	return;
     va_start(ap, format);
     vfprintf(stdout, format, ap);
