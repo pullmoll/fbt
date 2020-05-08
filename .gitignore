@@ -1,7 +1,7 @@
 # Autotools generated files
-.deps/
-.libs/
-.dirstamp/
+**/.deps
+**/.libs
+**/.dirstamp
 autoscan.log
 autom4te.cache/
 m4/
@@ -22,6 +22,7 @@ libtool
 ltmain.sh
 missing
 stamp-h1
+*.lo
 *.la
 
 # Binaries

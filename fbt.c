@@ -36,7 +36,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "sfb.h"
 
@@ -77,7 +79,22 @@ static const char* basename(const char* filename)
     const char* slash = strrchr(filename, '/');
     return slash ? slash + 1 : filename;
 }
-    
+
+void test_rects(struct sfb_s* sfb, int us)
+{
+    for (int n = 0; n < 1000; n++) {
+        const int x1 = rand() % fb_w(sfb);
+        const int y1 = rand() % fb_h(sfb);
+        const int w = rand() % 64;
+        const int h = rand() % 64;
+        const uint32_t color = rand() & 0x00ffffff;
+        fb_rect(sfb, x1, y1, x1 + w - 1, y1 + h - 1, color);
+	if (us) {
+		usleep(us);
+	}
+    }
+}
+ 
 /**
  * @brief A simple test drawing lines across the TFT
  */
@@ -232,6 +249,8 @@ int main(int argc, char** argv)
     int nfiles = 0;
     int upscale = 0;
 
+    srand(time(NULL));
+
     for (int i = 1; i < argc; i++) {
         if (!strncmp("-fb=", argv[i], 4)) {
             fbdev = argv[i] + 4;
@@ -254,14 +273,15 @@ int main(int argc, char** argv)
     if (res < 0) {
         return 1;
     }
-    fb_clear(sfb);
 
     info(1, "Using GD version %s %s\n",
 	 gdVersionString(), gdExtraVersion());
     info(1, "Framebuffer '%s' is %dx%d, %dbpp\n",
         fb_devname(sfb), fb_w(sfb), fb_h(sfb), fb_bpp(sfb));
 
+    fb_clear(sfb);
     if (nfiles < 1) {
+    	test_rects(sfb, 0);
     	test_lines(sfb, 0);
     	usage(argv);
     	return 1;

@@ -57,6 +57,7 @@ extern int fb_bpp(struct sfb_s* sfb);
 
 extern void fb_clear(struct sfb_s* sfb);
 extern void fb_line(struct sfb_s* sfb, int x1, int y1, int x2, int y2, unsigned color);
+extern void fb_rect(struct sfb_s* sfb, int x1, int y1, int x2, int y2, unsigned color);
 extern void fb_shift(struct sfb_s* sfb, shift_dir_e dir, int pixels);
 extern void fb_putchar(struct sfb_s* sfb, unsigned color, char ch);
 extern void fb_puttext(struct sfb_s* sfb, unsigned color, const char* text);

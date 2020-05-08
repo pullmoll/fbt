@@ -2332,7 +2332,6 @@ fi
 as_fn_append ac_header_list " stdio.h"
 as_fn_append ac_header_list " stdlib.h"
 as_fn_append ac_header_list " string.h"
-as_fn_append ac_header_list " xyz.h"
 as_fn_append ac_header_list " stdarg.h"
 as_fn_append ac_header_list " inttypes.h"
 as_fn_append ac_header_list " stdint.h"
@@ -12879,8 +12878,6 @@ _ACEOF
 fi
 
 done
-
-
 
 
 

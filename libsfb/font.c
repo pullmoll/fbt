@@ -3622,4 +3622,4 @@ static const unsigned char font_6x8_data[] = {
     BITS(__,__,XX,XX,XX,__),
 };
 
-const fbfont_t font_6x8 = { 6, 12, 256, font_6x8_data };
+const fbfont_t font_6x8 = { 6, 12, sizeof(font_6x8_data) / 12, font_6x8_data };
