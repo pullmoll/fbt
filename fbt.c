@@ -88,7 +88,10 @@ void test_rects(struct sfb_s* sfb, int us)
         const int w = rand() % 64;
         const int h = rand() % 64;
         const uint32_t color = rand() & 0x00ffffff;
-        fb_rect(sfb, x1, y1, x1 + w - 1, y1 + h - 1, color);
+	if (rand() & 0x4000)
+        	fb_fill(sfb, x1, y1, x1 + w - 1, y1 + h - 1, color);
+	else
+        	fb_rect(sfb, x1, y1, x1 + w - 1, y1 + h - 1, color);
 	if (us) {
 		usleep(us);
 	}
@@ -281,8 +284,8 @@ int main(int argc, char** argv)
 
     fb_clear(sfb);
     if (nfiles < 1) {
-    	test_rects(sfb, 0);
-    	test_lines(sfb, 0);
+    	test_rects(sfb, 2000);
+    	test_lines(sfb, 5000);
     	usage(argv);
     	return 1;
     }

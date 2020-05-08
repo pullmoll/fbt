@@ -716,6 +716,28 @@ void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2, uint32_t color)
 }
 
 /**
+ * @brief Fill a rectangle at @p x1, @p y1 to @p x2, @p y2
+ *
+ * @param x1 first corner x coordinate
+ * @param y1 first corner y coordinate
+ * @param x2 opposite corner x coordinate
+ * @param y2 opposite corner y coordinate
+ * @param color pixel color
+ */
+void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2, uint32_t color)
+{
+    const int tl_x = x1 <= x2 ? x1 : x2;
+    const int tl_y = y1 <= y2 ? y1 : y2;
+    const int br_x = x1 > x2 ? x1 : x2;
+    const int br_y = y1 > y2 ? y1 : y2;
+    const int w = br_x + 1 - tl_x;
+    const int h = br_y + 1 - tl_y;
+
+    for (int i = 0; i < h; i++)
+	fb->hline(fb, tl_x, tl_y + i, w, color);
+}
+
+/**
  * @brief Initialize the framebuffer device info and map to memory
  * @param devname device name like "/dev/fb1"
  * @return 0 on success, or < 0 on error
