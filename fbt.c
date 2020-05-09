@@ -147,8 +147,8 @@ void test_circles(struct sfb_s* sfb, int us)
     for (int n = 0; n < 50000; n++) {
 	const int x = rand() % fb_w(sfb);
 	const int y = rand() % fb_h(sfb);
-	const int r = rand() % 256;
-        const unsigned char oct = rand() & 255;
+	const int r = rand() % 64;
+        const unsigned char oct = ((rand() & 0xfff) == 0x555) ? rand() & 255 : 255;
 	const uint32_t color = rand() & 0x00ffffff;
 	if (rand() & 0x4000)
 	    fb_disc_octants(sfb, oct, x, y, r, color);
@@ -332,7 +332,7 @@ int main(int argc, char** argv)
 	// test_rects(sfb, 200);
 	// test_lines(sfb, 500);
 	test_text(sfb, 5000);
-	// test_circles(sfb, 100);
+	test_circles(sfb, 25000);
 	usage(argv);
 	return 1;
     }

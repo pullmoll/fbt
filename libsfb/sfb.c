@@ -1395,11 +1395,43 @@ static inline uint16_t rgb32_to_16(const unsigned r, const unsigned g, const uns
 /**
  * @brief Write a gd image to the framebuffer /dev/fb1
  *
+ * @param fb pointer to the frame buffer context
  * @param im gdImagePtr with the image to write
  */
 void fb_dump(sfb_t* fb, gdImagePtr im)
 {
-    if (16 == fb->bpp) {
+    switch (fb->bpp) {
+    case 1:
+	for (int y = 0; y < fb->h; y++) {
+	    const off_t pos = y * fb->stride;
+	    uint8_t* dst = &fb->fbp[pos];
+            uint8_t bits = 0;
+	    for (int x = 0; x < fb->w; x++) {
+		int pix = gdImageGetPixel(im, x, y);
+                if (pix)
+                    bits |= (0x80 >> (x % 8));
+                else
+                    bits &= ~(0x80 >> (x % 8));
+                if (7 == (x % 8)) {
+                    *dst++ = bits;
+                }
+	    }
+            if (0 != (fb->w % 8)) {
+                *dst = bits;
+            }
+	}
+        break;
+    case 8:
+	for (int y = 0; y < fb->h; y++) {
+	    const off_t pos = y * fb->stride;
+	    uint8_t* dst = &fb->fbp[pos];
+	    for (int x = 0; x < fb->w; x++) {
+		int pix = gdImageGetPixel(im, x, y);
+		*dst++ = (uint8_t)pix;
+	    }
+	}
+        break;
+    case 16:
 	for (int y = 0; y < fb->h; y++) {
 	    const off_t pos = y * fb->stride;
 	    uint8_t* dst = &fb->fbp[pos];
@@ -1415,7 +1447,8 @@ void fb_dump(sfb_t* fb, gdImagePtr im)
 		dst += 2;
 	    }
 	}
-    } else {
+        break;
+    case 24:
 	for (int y = 0; y < fb->h; y++) {
 	    const off_t pos = y * fb->stride;
 	    uint8_t* dst = &fb->fbp[pos];
@@ -1424,8 +1457,23 @@ void fb_dump(sfb_t* fb, gdImagePtr im)
 		dst[0] = (uint8_t)(pix >>  0);
 		dst[1] = (uint8_t)(pix >>  8);
 		dst[2] = (uint8_t)(pix >> 16);
+		dst += 3;
+	    }
+	}
+        break;
+    case 32:
+	for (int y = 0; y < fb->h; y++) {
+	    const off_t pos = y * fb->stride;
+	    uint8_t* dst = &fb->fbp[pos];
+	    for (int x = 0; x < fb->w; x++) {
+		int pix = gdImageGetTrueColorPixel(im, x, y);
+		dst[0] = (uint8_t)(pix >>  0);
+		dst[1] = (uint8_t)(pix >>  8);
+		dst[2] = (uint8_t)(pix >> 16);
+		dst[3] = 0xff;
 		dst += 4;
 	    }
 	}
+        break;
     }
 }

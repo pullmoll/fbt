@@ -12,7 +12,7 @@ AC_PROG_CC
 # Required header files
 AC_CHECK_HEADERS_ONCE([stdio.h stdlib.h string.h
         stdarg.h inttypes.h stdint.h unistd.h
-	sys/types.h sys/stat.h fcntl.h
+	time.h sys/types.h sys/stat.h fcntl.h
 	sys/ioctl.h sys/mman.h linux/fb.h gd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
