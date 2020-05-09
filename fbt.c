@@ -33,14 +33,26 @@
 #include "config.h"
 #endif
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <time.h>
-
 #include "sfb.h"
+
+#if defined(HAVE_STDLIB_H)
+#include <stdlib.h>
+#endif
+#if defined(HAVE_STDIO_H)
+#include <stdio.h>
+#endif
+#if defined(HAVE_STRING_H)
+#include <string.h>
+#endif
+#if defined(HAVE_STDINT_H)
+#include <stdint.h>
+#endif
+#if defined(HAVE_UNISTD_H)
+#include <unistd.h>
+#endif
+#if defined(HAVE_TIME_H)
+#include <time.h>
+#endif
 
 #if defined(HAVE_GD_H)
 #include <gd.h>
@@ -119,6 +131,29 @@ void test_lines(struct sfb_s* sfb, int us)
 
     for (int y = 0; y < fb_h(sfb); y += 3) {
 	fb_line(sfb, 0, y, fb_w(sfb) - 1, fb_h(sfb) - 1 - y, 0xfffffff);
+	if (us) {
+	    usleep(us);
+	}
+    }
+}
+
+/**
+ * @brief A simple test drawing circles and discs across the TFT
+ * @param sfb pointer to the libsfb context
+ * @param us number of microseconds to delay between drawing
+ */
+void test_circles(struct sfb_s* sfb, int us)
+{
+    for (int n = 0; n < 50000; n++) {
+	const int x = rand() % fb_w(sfb);
+	const int y = rand() % fb_h(sfb);
+	const int r = rand() % 256;
+        const unsigned char oct = rand() & 255;
+	const uint32_t color = rand() & 0x00ffffff;
+	if (rand() & 0x4000)
+	    fb_disc_octants(sfb, oct, x, y, r, color);
+	else
+	    fb_circle_octants(sfb, oct, x, y, r, color);
 	if (us) {
 	    usleep(us);
 	}
@@ -297,6 +332,7 @@ int main(int argc, char** argv)
 	// test_rects(sfb, 200);
 	// test_lines(sfb, 500);
 	test_text(sfb, 5000);
+	// test_circles(sfb, 100);
 	usage(argv);
 	return 1;
     }

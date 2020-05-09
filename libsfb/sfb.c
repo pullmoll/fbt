@@ -735,6 +735,7 @@ static void vline_32bpp(sfb_t* fb, int x, int y, int l, color_t color)
 /**
  * @brief Draw a line from @p x1, @p y1 to @p x2, @p y2
  *
+ * @param fb pointer to the frame buffer context
  * @param x1 line start x coordinate
  * @param y1 line start y coordinate
  * @param x2 line end x coordinate
@@ -778,6 +779,7 @@ void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
 /**
  * @brief Draw a rectangle at @p x1, @p y1 to @p x2, @p y2
  *
+ * @param fb pointer to the frame buffer context
  * @param x1 first corner x coordinate
  * @param y1 first corner y coordinate
  * @param x2 opposite corner x coordinate
@@ -802,6 +804,7 @@ void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
 /**
  * @brief Fill a rectangle at @p x1, @p y1 to @p x2, @p y2
  *
+ * @param fb pointer to the frame buffer context
  * @param x1 first corner x coordinate
  * @param y1 first corner y coordinate
  * @param x2 opposite corner x coordinate
@@ -822,8 +825,119 @@ void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
 }
 
 /**
- * @brief Initialize the framebuffer device info and map to memory
+ * @brief Draw a circle's octants @p oct at @p x, @p y with radius @p r
+ *
  * @param fb pointer to the frame buffer context
+ * @param x center x coordinate
+ * @param y center y coordinate
+ * @param r radius in pixels
+ * @param color pixel color
+ * @param oct octants to draw (0 … 7 for counter-clockwise octants)
+ */
+void fb_circle_octants(sfb_t *fb, uint8_t oct, int x, int y, int r, color_t color)
+{
+    int dda = r;
+    int dx = r;
+    int dy = 0;
+    while (dx >= dy) {
+	if (oct & (1 << 0))
+	    fb->setpixel(fb, x + dx, y - dy, color);
+	if (oct & (1 << 1))
+	    fb->setpixel(fb, x + dy, y - dx, color);
+	if (oct & (1 << 2))
+	    fb->setpixel(fb, x - dy, y - dx, color);
+	if (oct & (1 << 3))
+	    fb->setpixel(fb, x - dx, y - dy, color);
+	if (oct & (1 << 4))
+	    fb->setpixel(fb, x - dx, y + dy, color);
+	if (oct & (1 << 5))
+	    fb->setpixel(fb, x - dy, y + dx, color);
+	if (oct & (1 << 6))
+	    fb->setpixel(fb, x + dy, y + dx, color);
+	if (oct & (1 << 7))
+	    fb->setpixel(fb, x + dx, y + dy, color);
+
+	dy++;
+	dda -= dy;
+	if (dda < 0) {
+	    dda += dx;
+	    dx--;
+	}
+    }
+}
+
+/**
+ * @brief Draw a circle at @p x, @p y with radius @p r
+ *
+ * @param fb pointer to the frame buffer context
+ * @param x center x coordinate
+ * @param y center y coordinate
+ * @param r radius in pixels
+ * @param color pixel color
+ */
+void fb_circle(sfb_t *fb, int x, int y, int r, color_t color)
+{
+    fb_circle_octants(fb, 0xff, x, y, r, color);
+}
+
+/**
+ * @brief Draw a disc's octants @p oct at @p x, @p y with radius @p r
+ *
+ * @param x center x coordinate
+ * @param y center y coordinate
+ * @param r radius in pixels
+ * @param color pixel color
+ * @param oct octants to draw (0 … 7 for counter-clockwise octants)
+ */
+void fb_disc_octants(sfb_t *fb, uint8_t oct, int x, int y, int r, color_t color)
+{
+    int dda = r;
+    int dx = r;
+    int dy = 0;
+    while (dx >= dy) {
+	const int l = dx + 1 - dy;
+	if (oct & (1 << 0))
+	    fb->hline(fb, x + dy, y - dy, l, color);
+	if (oct & (1 << 1))
+	    fb->vline(fb, x + dy, y - dx, l, color);
+	if (oct & (1 << 2))
+	    fb->vline(fb, x - dy, y - dx, l, color);
+	if (oct & (1 << 3))
+	    fb->hline(fb, x - dx, y - dy, l, color);
+	if (oct & (1 << 4))
+	    fb->hline(fb, x - dx, y + dy, l, color);
+	if (oct & (1 << 5))
+	    fb->vline(fb, x - dy, y + dy, l, color);
+	if (oct & (1 << 6))
+	    fb->vline(fb, x + dy, y + dy, l, color);
+	if (oct & (1 << 7))
+	    fb->hline(fb, x + dy, y + dy, l, color);
+	dy++;
+	dda -= dy;
+	if (dda < 0) {
+	    dda += dx;
+	    dx--;
+	}
+    }
+}
+
+/**
+ * @brief Draw a dist at @p x, @p y with radius @p r
+ *
+ * @param fb pointer to the frame buffer context
+ * @param x center x coordinate
+ * @param y center y coordinate
+ * @param r radius in pixels
+ * @param color pixel color
+ */
+void fb_disc(sfb_t *fb, int x, int y, int r, color_t color)
+{
+    fb_disc_octants(fb, 0xff, x, y, r, color);
+}
+
+/**
+ * @brief Initialize the framebuffer device info and map to memory
+ * @param sfb pointer to the frame buffer context pointer
  * @param devname device name like "/dev/fb1"
  * @return 0 on success, or < 0 on error
  */
