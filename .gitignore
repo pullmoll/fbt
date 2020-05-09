@@ -33,6 +33,7 @@ fbt
 
 # Doxygen generated
 doc/*
+doxygen.log
 
 # Test files
 pic/*

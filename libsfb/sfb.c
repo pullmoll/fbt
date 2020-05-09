@@ -41,6 +41,7 @@
 #if defined(HAVE_STDINT_H)
 #include <stdint.h>
 #endif
+#include <assert.h>
 
 #if defined(HAVE_UNISTD_H)
 #include <unistd.h>
@@ -71,7 +72,22 @@
 #include "font.h"
 #include "sfb.h"
 
+#if !defined(MIN)
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#endif
+
+#if !defined(MAX)
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+#endif
+
+#if !defined(BOUND)
+#define	BOUND(a,b,c) MIN(MAX(a,b),c)
+#endif
+
 typedef struct sfb_s {
+    /** @brief most recent error message */
+    char errmsg[256];
+
     /** @brief frame buffer device name */
     const char* devname;
 
@@ -106,13 +122,13 @@ typedef struct sfb_s {
     uint32_t (*getpixel)(struct sfb_s* sfb, int x, int y);
 
     /** @brief pointer to the function to set a pixel for a specific depth */
-    void (*setpixel)(struct sfb_s* sfb, int x, int y, uint32_t color);
+    void (*setpixel)(struct sfb_s* sfb, int x, int y, color_t color);
 
     /** @brief pointer to the function to write a horizontal line for a specific depth */
-    void (*hline)(struct sfb_s* sfb, int x, int y, int l, uint32_t color);
+    void (*hline)(struct sfb_s* sfb, int x, int y, int l, color_t color);
 
     /** @brief pointer to the function to write a vertical line for a specific depth */
-    void (*vline)(struct sfb_s* sfb, int x, int y, int l, uint32_t color);
+    void (*vline)(struct sfb_s* sfb, int x, int y, int l, color_t color);
 
     /** @brief pointer to font to use */
     const fbfont_t* font;
@@ -125,36 +141,62 @@ typedef struct sfb_s {
 }   sfb_t;
 
 /**
+ * @brief Print an error message into the frame buffer context's buffer
+ * @param fb pointer to the frame buffer context
+ * @param format C format string followed by optional parameters
+ */
+static void error(sfb_t* fb, const char* format, ...)
+{
+    va_list ap;
+    va_start(ap, format);
+    vsnprintf(fb->errmsg, sizeof(fb->errmsg), format, ap);
+    va_end(ap);
+}
+
+/**
+ * @brief check if coordinates x and y are in range
+ * 0 <= x < w and 0 <= y < h
+ * otherwise return 0
+ */
+#define	RANGE_CHECK_GETPIXEL(_fb) do {	\
+    if (x < 0 ||			\
+	x >= (_fb)->w ||		\
+	y < 0 ||			\
+	y >= (_fb)->h) {		\
+	return 0;			\
+    }					\
+} while (0)
+
+/**
  * @brief Read a pixel value from the coordinates @p x and @p y
  * The frame buffer has 1 bit per pixel
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @return pixel value
  */
-static uint32_t getpixel_1bpp(sfb_t* fb, int x, int y)
+static color_t getpixel_1bpp(sfb_t* fb, int x, int y)
 {
+    RANGE_CHECK_GETPIXEL(fb);
+
     off_t pos =
 	    ((x + fb->x) + 7) / 8 +
 	    (y + fb->y) * fb->stride;
 
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return 0;
-    }
     return (fb->fbp[pos] >> (x & 7)) & 1;
 }
 
 /**
  * @brief Read a pixel value from the coordinates @p x and @p y
  * The frame buffer has 8 bits per pixel (color index or gray scale)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @return pixel value
  */
-static uint32_t getpixel_8bpp(sfb_t* fb, int x, int y)
+static color_t getpixel_8bpp(sfb_t* fb, int x, int y)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return 0;
-    }
+    RANGE_CHECK_GETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) +
@@ -166,15 +208,14 @@ static uint32_t getpixel_8bpp(sfb_t* fb, int x, int y)
 /**
  * @brief Read a pixel value from the coordinates @p x and @p y
  * The frame buffer has 16 bits per pixel (RGB 5-6-5)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @return pixel value
  */
-static uint32_t getpixel_16bpp(sfb_t* fb, int x, int y)
+static color_t getpixel_16bpp(sfb_t* fb, int x, int y)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return 0;
-    }
+    RANGE_CHECK_GETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 2 +
@@ -187,15 +228,14 @@ static uint32_t getpixel_16bpp(sfb_t* fb, int x, int y)
 /**
  * @brief Read a pixel value from the coordinates @p x and @p y
  * The frame buffer has 24 bits per pixel (RGB 8-8-8)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @return pixel value
  */
-static uint32_t getpixel_24bpp(sfb_t* fb, int x, int y)
+static color_t getpixel_24bpp(sfb_t* fb, int x, int y)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return 0;
-    }
+    RANGE_CHECK_GETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 3 +
@@ -209,15 +249,14 @@ static uint32_t getpixel_24bpp(sfb_t* fb, int x, int y)
 /**
  * @brief Read a pixel value from the coordinates @p x and @p y
  * The frame buffer has 32 bits per pixel (ARGB 8-8-8-8)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @return pixel value
  */
-static uint32_t getpixel_32bpp(sfb_t* fb, int x, int y)
+static color_t getpixel_32bpp(sfb_t* fb, int x, int y)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return 0;
-    }
+    RANGE_CHECK_GETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 4 +
@@ -230,17 +269,30 @@ static uint32_t getpixel_32bpp(sfb_t* fb, int x, int y)
 }
 
 /**
+ * @brief check if coordinates x and y are in range
+ * 0 <= x < w and 0 <= y < h
+ * otherwise return
+ */
+#define	RANGE_CHECK_SETPIXEL(_fb) do {	\
+    if (x < 0 ||			\
+	x >= (_fb)->w ||		\
+	y < 0 ||			\
+	y >= (_fb)->h) {		\
+	return;				\
+    }					\
+} while (0)
+
+/**
  * @brief Write a pixel value at the coordinates @p x and @p y
  * The frame buffer has 1 bit per pixel
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param color pixel color to set
  */
-static void setpixel_1bpp(sfb_t* fb, int x, int y, uint32_t color)
+static void setpixel_1bpp(sfb_t* fb, int x, int y, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_SETPIXEL(fb);
 
     off_t pos =
 	    ((x + fb->x) + 7) / 8 +
@@ -256,15 +308,14 @@ static void setpixel_1bpp(sfb_t* fb, int x, int y, uint32_t color)
 /**
  * @brief Write a pixel value at the coordinates @p x and @p y
  * The frame buffer has 8 bits per pixel
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param color pixel color to set
  */
-static void setpixel_8bpp(sfb_t* fb, int x, int y, uint32_t color)
+static void setpixel_8bpp(sfb_t* fb, int x, int y, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_SETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) +
@@ -276,15 +327,14 @@ static void setpixel_8bpp(sfb_t* fb, int x, int y, uint32_t color)
 /**
  * @brief Write a pixel value at the coordinates @p x and @p y
  * The frame buffer has 16 bits per pixel (RGB 5-6-5)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param color pixel color to set
  */
-static void setpixel_16bpp(sfb_t* fb, int x, int y, uint32_t color)
+static void setpixel_16bpp(sfb_t* fb, int x, int y, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_SETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 2 +
@@ -297,16 +347,15 @@ static void setpixel_16bpp(sfb_t* fb, int x, int y, uint32_t color)
 /**
  * @brief Write a pixel value at the coordinates @p x and @p y
  * The frame buffer has 24 bits per pixel (RGB 8-8-8)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param color pixel color to set
  */
-static void setpixel_24bpp(sfb_t* fb, int x, int y, uint32_t color)
+static void setpixel_24bpp(sfb_t* fb, int x, int y, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
+    RANGE_CHECK_SETPIXEL(fb);
 
-    }
     off_t pos =
 	    (x + fb->x) * 3 +
 	    (y + fb->y) * fb->stride;;
@@ -319,15 +368,14 @@ static void setpixel_24bpp(sfb_t* fb, int x, int y, uint32_t color)
 /**
  * @brief Write a pixel value at the coordinates @p x and @p y
  * The frame buffer has 32 bits per pixel (ARGB 8-8-8-8)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param color pixel color to set
  */
-static void setpixel_32bpp(sfb_t* fb, int x, int y, uint32_t color)
+static void setpixel_32bpp(sfb_t* fb, int x, int y, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_SETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 4 +
@@ -340,18 +388,40 @@ static void setpixel_32bpp(sfb_t* fb, int x, int y, uint32_t color)
 }
 
 /**
+ * @brief check if coordinates x and y are in range
+ * adjust l if x < 0 or x + l > w
+ * 0 <= x < w and 0 <= y < h and l > 0
+ * otherwise return
+ */
+#define	RANGE_CHECK_HLINE(_fb) do { \
+    if (x < 0) {		    \
+	l += x;			    \
+	x = 0;			    \
+    }				    \
+    if (x + l >= fb->w) {	    \
+	l = fb->w - x;		    \
+    }				    \
+    if (l <= 0 ||		    \
+	x < 0 ||		    \
+	x >= (_fb)->w ||	    \
+	y < 0 ||		    \
+	y >= (_fb)->h) {	    \
+	return;			    \
+    }				    \
+} while (0)
+
+/**
  * @brief Write a horizontal line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 1 bit per pixel
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void hline_1bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void hline_1bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_HLINE(fb);
 
     off_t pos =
 	    ((x + fb->x) + 7) / 8 +
@@ -381,16 +451,15 @@ static void hline_1bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 /**
  * @brief Write a horizontal line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 8 bits per pixel
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void hline_8bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void hline_8bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_HLINE(fb);
 
     off_t pos =
 	    (x + fb->x) +
@@ -408,16 +477,15 @@ static void hline_8bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 /**
  * @brief Write a horizontal line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 16 bits per pixel (RGB 5-6-5)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void hline_16bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void hline_16bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_HLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 2 +
@@ -437,16 +505,15 @@ static void hline_16bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 /**
  * @brief Write a horizontal line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 24 bits per pixel (RGB 8-8-8)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void hline_24bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void hline_24bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_HLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 3 +
@@ -467,16 +534,15 @@ static void hline_24bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 /**
  * @brief Write a horizontal line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 32 bits per pixel (ARGB 8-8-8-8)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void hline_32bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void hline_32bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_HLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 4 +
@@ -496,18 +562,40 @@ static void hline_32bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 }
 
 /**
+ * @brief check if coordinates x and y are in range
+ * adjust l if y < 0 or y + l > h
+ * 0 <= x < w and 0 <= y < h and l > 0
+ * otherwise return
+ */
+#define	RANGE_CHECK_VLINE(_fb) do { \
+    if (y < 0) {		    \
+	l += y;			    \
+	y = 0;			    \
+    }				    \
+    if (y + l >= (_fb)->h) {	    \
+	l = (_fb)->w - x;	    \
+    }				    \
+    if (l <= 0 ||		    \
+	x < 0 ||		    \
+	x >= (_fb)->w ||	    \
+	y < 0 ||		    \
+	y >= (_fb)->h) {	    \
+	return;			    \
+    }				    \
+} while (0)
+
+/**
  * @brief Write a vertical line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 1 bit per pixel
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void vline_1bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void vline_1bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_VLINE(fb);
 
     off_t pos =
 	    ((x + fb->x) + 7) / 8 +
@@ -533,16 +621,15 @@ static void vline_1bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 /**
  * @brief Write a vertical line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 8 bits per pixel
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void vline_8bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void vline_8bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_VLINE(fb);
 
     off_t pos =
 	    (x + fb->x) +
@@ -561,16 +648,15 @@ static void vline_8bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 /**
  * @brief Write a vertical line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 16 bits per pixel (RGB 5-6-5)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void vline_16bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void vline_16bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_VLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 2 +
@@ -590,16 +676,15 @@ static void vline_16bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 /**
  * @brief Write a vertical line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 24 bits per pixel (RGB 8-8-8)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void vline_24bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void vline_24bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_VLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 3 +
@@ -620,16 +705,15 @@ static void vline_24bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
 /**
  * @brief Write a vertical line at the coordinates @p x and @p y with length @p l
  * The frame buffer has 32 bits per pixel (ARGB 8-8-8-8)
+ * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
  * @param color pixel color to set
  */
-static void vline_32bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
+static void vline_32bpp(sfb_t* fb, int x, int y, int l, color_t color)
 {
-    if (x < 0 || x >= fb->w || y < 0 || y >= fb->h) {
-	return;
-    }
+    RANGE_CHECK_VLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 4 +
@@ -657,7 +741,7 @@ static void vline_32bpp(sfb_t* fb, int x, int y, int l, uint32_t color)
  * @param y2 line end y coordinate
  * @param color pixel color
  */
-void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2, uint32_t color)
+void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
 {
     const int sx = x1 < x2 ? 1 : -1;
     const int sy = y1 < y2 ? 1 : -1;
@@ -700,7 +784,7 @@ void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2, uint32_t color)
  * @param y2 opposite corner y coordinate
  * @param color pixel color
  */
-void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2, uint32_t color)
+void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
 {
     const int tl_x = x1 <= x2 ? x1 : x2;
     const int tl_y = y1 <= y2 ? y1 : y2;
@@ -724,7 +808,7 @@ void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2, uint32_t color)
  * @param y2 opposite corner y coordinate
  * @param color pixel color
  */
-void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2, uint32_t color)
+void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
 {
     const int tl_x = x1 <= x2 ? x1 : x2;
     const int tl_y = y1 <= y2 ? y1 : y2;
@@ -739,6 +823,7 @@ void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2, uint32_t color)
 
 /**
  * @brief Initialize the framebuffer device info and map to memory
+ * @param fb pointer to the frame buffer context
  * @param devname device name like "/dev/fb1"
  * @return 0 on success, or < 0 on error
  */
@@ -754,22 +839,19 @@ int fb_init(struct sfb_s** sfb, const char* devname)
 
     fb->fd = open(devname, O_RDWR);
     if (-1 == fb->fd) {
-	perror("Error: opening the framebuffer device with open(devname, O_RDWR)");
-        free(fb);
+	free(fb);
 	return -1;
     }
 
     // Get fixed screen information
     if (ioctl(fb->fd, FBIOGET_FSCREENINFO, &finfo) == -1) {
-	perror("Error: reading frame bufer fixed information");
-        free(fb);
+	free(fb);
 	return -2;
     }
 
     // Get variable screen information
     if (ioctl(fb->fd, FBIOGET_VSCREENINFO, &vinfo) == -1) {
-	perror("Error: reading frame bufer variable information");
-        free(fb);
+	free(fb);
 	return -3;
     }
     fb->devname = devname;
@@ -785,7 +867,6 @@ int fb_init(struct sfb_s** sfb, const char* devname)
     // Map the device to memory
     fb->fbp = (uint8_t *) mmap(0, fb->size, PROT_READ | PROT_WRITE, MAP_SHARED, fb->fd, 0);
     if (MAP_FAILED == fb->fbp) {
-	perror("Error: failed to map framebuffer device to memory");
 	close(fb->fd);
 	free(fb);
 	return -4;
@@ -837,26 +918,31 @@ int fb_init(struct sfb_s** sfb, const char* devname)
 
 /**
  * @brief Unmap memory and close the framebuffer device
+ * @param sfb pointer to the frame buffer context pointer
  */
 void fb_exit(sfb_t** sfb)
 {
+    if (!sfb)
+	return;
+
     sfb_t* fb = *sfb;
     if (fb) {
-        if (MAP_FAILED != fb->fbp) {
+	if (MAP_FAILED != fb->fbp) {
 	    munmap(fb->fbp, fb->size);
 	    fb->fbp = MAP_FAILED;
-        }
-        if (fb->fd >= 0) {
+	}
+	if (fb->fd >= 0) {
 	    close(fb->fd);
 	    fb->fd = -1;
-        }
-        free(fb);
+	}
+	free(fb);
     }
     *sfb = NULL;
 }
 
 /**
  * @brief Return the framebuffer device name
+ * @param fb pointer to the frame buffer context
  */
 const char* fb_devname(sfb_t* fb)
 {
@@ -864,7 +950,30 @@ const char* fb_devname(sfb_t* fb)
 }
 
 /**
+ * @brief Return framebuffer x offset
+ * @param fb pointer to the frame buffer context
+ */
+int fb_x(sfb_t* fb)
+{
+    if (!fb)
+	return 0;
+    return fb->x;
+}
+
+/**
+ * @brief Return framebuffer y offset
+ * @param fb pointer to the frame buffer context
+ */
+int fb_y(sfb_t* fb)
+{
+    if (!fb)
+	return 0;
+    return fb->y;
+}
+
+/**
  * @brief Return width of framebuffer
+ * @param fb pointer to the frame buffer context
  */
 int fb_w(sfb_t* fb)
 {
@@ -875,6 +984,7 @@ int fb_w(sfb_t* fb)
 
 /**
  * @brief Return height of framebuffer
+ * @param fb pointer to the frame buffer context
  */
 int fb_h(sfb_t* fb)
 {
@@ -885,6 +995,7 @@ int fb_h(sfb_t* fb)
 
 /**
  * @brief Return number of bits per pixel for the framebuffer
+ * @param fb pointer to the frame buffer context
  */
 int fb_bpp(sfb_t* fb)
 {
@@ -894,56 +1005,153 @@ int fb_bpp(sfb_t* fb)
 }
 
 /**
+ * @brief Return cursor x coordinate
+ * @param fb pointer to the frame buffer context
+ */
+int fb_cx(sfb_t* fb)
+{
+    if (!fb)
+	return 0;
+    return fb->curx;
+}
+
+/**
+ * @brief Return cursor y coordinate
+ * @param fb pointer to the frame buffer context
+ */
+int fb_cy(sfb_t* fb)
+{
+    if (!fb)
+	return 0;
+    return fb->cury;
+}
+
+/**
+ * @brief Go to cursor @px and @p y coordinates
+ * @param fb pointer to the frame buffer context
+ */
+void fb_gotoxy(sfb_t* fb, int x, int y)
+{
+    if (!fb)
+	return;
+    fb->curx = BOUND(x, 0, fb->w - 1);
+    fb->cury = BOUND(y, 0, fb->h - 1);
+}
+
+/**
  * @brief Clear the framebuffer
+ * @param fb pointer to the frame buffer context
  */
 void fb_clear(sfb_t* fb)
 {
+    if (!fb)
+	return;
+    assert(fb->fbp != MAP_FAILED);
     memset(fb->fbp, 0, fb->size);
 }
 
 /**
  * @brief Shift the frame buffer in one direction
+ * @param fb pointer to the frame buffer context
  */
 void fb_shift(sfb_t* fb, shift_dir_e dir, int pixels)
 {
-	switch (dir) {
-	case shift_left:	/* to the left */
-		for (int y = 0; y < fb->h; y++) {
-			const int pos = y * fb->stride;
-			memmove(&fb->fbp[pos], &fb->fbp[pos+pixels], fb->stride - pixels);
-			memset(&fb->fbp[pos+pixels], 0, pixels);
-		}
-		break;
-	case shift_right:	/* to the right */
-		for (int y = 0; y < fb->h; y++) {
-			const int pos = y * fb->stride;
-			memmove(&fb->fbp[pos+pixels], &fb->fbp[pos], fb->stride - pixels);
-			memset(&fb->fbp[pos], 0, pixels);
-		}
-		break;
-	case shift_up:	/* to the top */
-		memmove(fb->fbp, &fb->fbp[fb->stride * pixels],
-			fb->stride * (fb->h - pixels));
-		memset(&fb->fbp[fb->stride * (fb->h - pixels)], 0,
-			fb->stride * pixels);
-		break;
-	case shift_down: /* to the bottom */
-	default:
-		memmove(&fb->fbp[fb->stride * pixels], fb->fbp,
-			fb->stride * (fb->h - pixels));
-		memset(fb->fbp, 0, fb->stride * pixels);
-		break;
+    switch (dir) {
+    case shift_left:	/* to the left */
+	for (int y = 0; y < fb->h; y++) {
+	    const int pos = y * fb->stride;
+	    memmove(&fb->fbp[pos], &fb->fbp[pos+pixels], fb->stride - pixels);
+	    memset(&fb->fbp[pos+pixels], 0, pixels);
 	}
+	break;
+    case shift_right:	/* to the right */
+	for (int y = 0; y < fb->h; y++) {
+	    const int pos = y * fb->stride;
+	    memmove(&fb->fbp[pos+pixels], &fb->fbp[pos], fb->stride - pixels);
+	    memset(&fb->fbp[pos], 0, pixels);
+	}
+	break;
+    case shift_up:	/* to the top */
+	memmove(fb->fbp, &fb->fbp[fb->stride * pixels],
+		fb->stride * (fb->h - pixels));
+	memset(&fb->fbp[fb->stride * (fb->h - pixels)], 0,
+		fb->stride * pixels);
+	break;
+    case shift_down: /* to the bottom */
+    default:
+	memmove(&fb->fbp[fb->stride * pixels], fb->fbp,
+		fb->stride * (fb->h - pixels));
+	memset(fb->fbp, 0, fb->stride * pixels);
+	break;
+    }
+}
+
+/**
+ * @brief Read a pixel value from the coordinates @p x and @p y
+ * @param fb pointer to the frame buffer context
+ * @param x coordinate
+ * @param y coordinate
+ * @return pixel value
+ */
+color_t fb_getpixel(sfb_t* fb, int x, int y)
+{
+    if (!fb)
+	return 0;
+    return fb->getpixel(fb, x, y);
+}
+
+/**
+ * @brief Write a pixel value @p color to the coordinates @p x and @p y
+ * @param fb pointer to the frame buffer context
+ * @param x coordinate
+ * @param y coordinate
+ * @paral color pixel color
+ * @return pixel value
+ */
+void fb_setpixel(sfb_t* fb, int x, int y, color_t color)
+{
+    if (!fb)
+	return;
+    return fb->setpixel(fb, x, y, color);
+}
+
+/**
+ * @brief Write a horizontal line at the coordinates @p x and @p y with length @p l
+ * @param fb pointer to the frame buffer context
+ * @param x coordinate
+ * @param y coordinate
+ * @param l length in pixels
+ * @param color pixel color to set
+ */
+void fb_hline(sfb_t* fb, int x, int y, int l, color_t color)
+{
+    if (!fb)
+	return;
+    return fb->hline(fb, x, y, l, color);
+}
+
+/**
+ * @brief Write a vertical line at the coordinates @p x and @p y with length @p l
+ * @param fb pointer to the frame buffer context
+ * @param x coordinate
+ * @param y coordinate
+ * @param l length in pixels
+ * @param color pixel color to set
+ */
+void fb_vline(sfb_t* fb, int x, int y, int l, color_t color)
+{
+    if (!fb)
+	return;
+    return fb->vline(fb, x, y, l, color);
 }
 
 /**
  * @brief Put a character glyph into the framebuffer
- * @param x coordinate of top, left pixel
- * @param y coordinate of top, left pixel
+ * @param fb pointer to the frame buffer context
  * @param color pixel color to set
- * @param ch ASCII character code to put
+ * @param ch ISO-8859-1 character code to put
  */
-void fb_putchar(sfb_t* fb, uint32_t color, char c)
+void fb_putc(sfb_t* fb, color_t color, char c)
 {
     uint8_t ch = (uint8_t)c;
 
@@ -956,76 +1164,101 @@ void fb_putchar(sfb_t* fb, uint32_t color, char c)
 	uint8_t bits = fb->font->data[offs+y0] << (8 - fb->font->w);
 	for (int x0 = 0; bits && x0 < fb->font->w; bits <<= 1, x0++) {
 	    if (bits & 0x80)
-		fb->setpixel(fb, fb->x + x0, fb->y + y0, color);
+		fb->setpixel(fb, fb->curx + x0, fb->cury + y0, color);
 	}
     }
 }
 
 /**
- * @brief Put a string @p text into the framebuffer at @p x, @p y with @p color
- * @param x pointer to coordinate of top, left pixel
- * @param y pointer to coordinate of top, left pixel
+ * @brief Put a string @p text into the framebuffer using @p color
+ *
+ * Some control characters are handled:
+ *  '\n' carriage return and line feed (curx = 0, cury += fh, scroll if off screen)
+ *  '\r' carriage return (curx = 0)
+ *
+ * @param fb pointer to the frame buffer context
  * @param color pixel color to set
  * @param text pointer to NUL terminated string to put
  */
-void fb_puttext(sfb_t* fb, uint32_t color, const char* text)
+void fb_puts(sfb_t* fb, color_t color, const char* text)
 {
     for (int i = 0; text[i]; i++) {
 	int advance = 0;
+
 	switch (text[i]) {
-	case 10:
-	    fb->x = 0;
-	    fb->y += fb->font->h;
-	    if (fb->y + fb->font->h >= fb->h) {
-		fb->y -= fb->font->h;
-		fb_shift(fb, 2, fb->font->h);
+	case '\n':
+	    fb->curx = 0;
+	    fb->cury += fb->font->h;
+	    if (fb->cury + fb->font->h >= fb->h) {
+		fb->cury -= fb->font->h;
+		fb_shift(fb, shift_up, fb->font->h);
 	    }
 	    break;
 
 	case 13:
-	    fb->x = 0;
+	    fb->curx = 0;
 	    break;
 
 	default:
-	    fb_putchar(fb, color, (uint8_t)text[i]);
+	    fb_putc(fb, color, (uint8_t)text[i]);
 	    advance = 1;
 	    break;
 	}
 
-	if (advance) {
-	    fb->x += fb->font->w;
-	    if (fb->x + fb->font->w >= fb->w) {
-		fb->x = 0;
-		fb->y += fb->font->h;
-		if (fb->y + fb->font->h >= fb->h) {
-		    fb->y -= fb->font->h;
-		    fb_shift(fb, 2, fb->font->h);
-		}
+	if (!advance) {
+	    continue;
+	}
+
+	fb->curx += fb->font->w;
+	if (fb->curx + fb->font->w >= fb->w) {
+	    fb->curx = 0;
+	    fb->cury += fb->font->h;
+	    if (fb->cury + fb->font->h >= fb->h) {
+		fb->cury -= fb->font->h;
+		fb_shift(fb, shift_up, fb->font->h);
 	    }
 	}
     }
 }
 
-size_t fb_vprintf(sfb_t* fb, const char* format, va_list ap)
+/**
+ * @brief Print a format string and its arguments
+ *
+ * @param fb pointer to the frame buffer context
+ * @param format C format string
+ * @param ap a va_list of arguments
+ */
+static size_t fb_vprintf(sfb_t* fb, color_t color, const char* format, va_list ap)
 {
+    if (!fb)
+        return (size_t)-1;
+
     size_t size = vsnprintf(NULL, 0, format, ap);
-    char* buffer = malloc(size);
-    if (NULL == buffer) {
-	perror("fb_vprintf()");
+    char* buffer = (char *)calloc(1, size + 1);
+    if (!buffer) {
+	error(fb, "Error: insufficient memory for fb_vprintf() (%u)", size);
 	return (size_t)-1;
     }
-    vsnprintf(buffer, size, format, ap);
-    fb_puttext(fb, 0x00ffffff, buffer);
+    size = vsnprintf(buffer, size, format, ap);
+    if ((int)size > 0) {
+        fb_puts(fb, color, buffer);
+    }
     free(buffer);
     return size;
 }
 
-size_t fb_printf(sfb_t* fb, const char* format, ...)
+/**
+ * @brief Print a format string and optional arguments
+ *
+ * @param fb pointer to the frame buffer context
+ * @param format C format string followed by optional arguments
+ */
+size_t fb_printf(sfb_t* fb, color_t color, const char* format, ...)
 {
     size_t size;
     va_list ap;
     va_start(ap, format);
-    size = fb_vprintf(fb, format, ap);
+    size = fb_vprintf(fb, color, format, ap);
     va_end(ap);
     return size;
 }
@@ -1040,9 +1273,9 @@ size_t fb_printf(sfb_t* fb, const char* format, ...)
 static inline uint16_t rgb32_to_16(const unsigned r, const unsigned g, const unsigned b)
 {
     return (uint16_t)
-	(((b >> 3) & 0x1f) <<  0) |
-	(((g >> 2) & 0x3f) <<  5) |
-	(((r >> 3) & 0x1f) << 11);
+	    (((b >> 3) & 0x1f) <<  0) |
+	    (((g >> 2) & 0x3f) <<  5) |
+	    (((r >> 3) & 0x1f) << 11);
 }
 
 /**

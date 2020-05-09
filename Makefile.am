@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -Im4
 
-AM_CFLAGS = -Wall -I./libsfb
+AM_CFLAGS = -O0 -Wall -I./libsfb
 AM_LDFLAGS = -L/usr/lib
 
 lib_LTLIBRARIES = libsfb.la
