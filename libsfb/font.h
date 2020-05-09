@@ -32,8 +32,9 @@
 typedef struct fbfont_s {
     int w;                      /*!< font cell width */
     int h;                      /*!< font cell height */
-    int count;                  /*!< number of glyphs */
+    const unsigned int* map;    /*!< map of unicodes */
     const unsigned char* data;  /*!< font definition bitmaps */
 }   fbfont_t;
 
-extern const fbfont_t font_6x8;
+extern const fbfont_t font_6x12;
+extern const fbfont_t font_8x13;

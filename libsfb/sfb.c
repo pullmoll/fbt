@@ -949,7 +949,7 @@ int fb_init(struct sfb_s** sfb, const char* devname)
 
     *sfb = NULL;
     fb->fbp = MAP_FAILED;
-    fb->font = &font_6x8;
+    fb->font = &font_8x13;
 
     fb->fd = open(devname, O_RDWR);
     if (-1 == fb->fd) {
@@ -1268,11 +1268,15 @@ void fb_vline(sfb_t* fb, int x, int y, int l, color_t color)
 void fb_putc(sfb_t* fb, color_t color, char c)
 {
     uint8_t ch = (uint8_t)c;
+    uint32_t glyph = 0;
+    for (uint32_t i = 0; fb->font->map[i]; i++) {
+	if (ch == fb->font->map[i]) {
+	    glyph = i;
+	    break;
+	}
+    }
 
-    if (ch >= fb->font->count)
-	return;
-
-    const size_t offs = fb->font->h * (uint8_t)ch;
+    const size_t offs = fb->font->h * glyph;
 
     for (int y0 = 0; y0 < fb->font->h; y0++) {
 	uint8_t bits = fb->font->data[offs+y0] << (8 - fb->font->w);
