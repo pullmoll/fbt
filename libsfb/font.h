@@ -29,12 +29,15 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  ****************************************************************************/
+#include <stdlib.h>
+
 typedef struct fbfont_s {
     int w;                      /*!< font cell width */
     int h;                      /*!< font cell height */
-    const unsigned int* map;    /*!< map of unicodes */
-    const unsigned char* data;  /*!< font definition bitmaps */
+    const wchar_t* map;         /*!< map of wide characters (unicode) */
+    const void* data;           /*!< font definition bitmaps */
 }   fbfont_t;
 
 extern const fbfont_t font_6x12;
 extern const fbfont_t font_8x13;
+extern const fbfont_t font_9x15;

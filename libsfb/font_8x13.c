@@ -2917,7 +2917,7 @@ static const unsigned char font_8x13_data[] = {
     BITS(_,_,X,X,X,X,_,_),
 };
 
-static const unsigned font_8x13_map[] = {
+static const wchar_t font_8x13_map[] = {
     0xfffe,
     0x0020, 0x0021, 0x0022, 0x0023, 0x0024, 0x0025, 0x0026, 0x0027,
     0x0028, 0x0029, 0x002a, 0x002b, 0x002c, 0x002d, 0x002e, 0x002f,

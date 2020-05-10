@@ -53,6 +53,9 @@
 #if defined(HAVE_TIME_H)
 #include <time.h>
 #endif
+#if defined(HAVE_LOCALE_H)
+#include <locale.h>
+#endif
 
 #if defined(HAVE_GD_H)
 #include <gd.h>
@@ -148,7 +151,7 @@ void test_circles(struct sfb_s* sfb, int us)
 	const int x = rand() % fb_w(sfb);
 	const int y = rand() % fb_h(sfb);
 	const int r = rand() % 64;
-        const unsigned char oct = ((rand() & 0xfff) == 0x555) ? rand() & 255 : 255;
+        const unsigned char oct = ((rand() & 0xff) == 0x55) ? rand() & 255 : 255;
 	const uint32_t color = rand() & 0x00ffffff;
 	if (rand() & 0x4000)
 	    fb_disc_octants(sfb, oct, x, y, r, color);
@@ -163,6 +166,7 @@ void test_circles(struct sfb_s* sfb, int us)
 /**
  * @brief A simple test writing a text to the TFT display
  * @param sfb pointer to the libsfb context
+ * @param us number of microseconds to delay between drawing
  */
 void test_text(struct sfb_s* sfb, int us)
 {
@@ -183,7 +187,7 @@ void test_text(struct sfb_s* sfb, int us)
 	    "That makes Calamity of so long life:\n"
 	    "For who would bear the Whips and Scorns of time,\n"
 	    "The Oppressor's wrong, the proud man's Contumely,\n"
-	    "The pangs of dispised Love, the Law’s delay,\n"
+	    "The pangs of dispised Love, the Law's delay,\n"
 	    "The insolence of Office, and the spurns\n"
 	    "That patient merit of the unworthy takes,\n"
 	    "When he himself might his Quietus make\n"
@@ -201,7 +205,12 @@ void test_text(struct sfb_s* sfb, int us)
 	    "With this regard their Currents turn awry, [F: away]\n"
 	    "And lose the name of Action. Soft you now,\n"
 	    "The fair Ophelia? Nymph, in thy Orisons\n"
-	    "Be all my sins remember'd.\n";
+	    "Be all my sins remember'd.\n"
+	    "\n"
+	    "A quick brown fox jumps over the lazy dog.\n"
+	    "Falsches Üben von Xylophonmusik quält jeden größeren Zwerg.\n"
+	    "Dès Noël où un zéphyr haï me vêt de glaçons würmiens,\n"
+	    "je dîne d’exquis rôtis de bœuf au kir à l’aÿ d’âge mûr & cætera !\n";
 
     for (const char* line = text; *line; line = strchr(line, '\n') + 1) {
         char buff[256];
@@ -297,6 +306,7 @@ int main(int argc, char** argv)
     int nfiles = 0;
     int upscale = 0;
 
+    setlocale(LC_ALL, "C.UTF-8");
     srand(time(NULL));
 
     for (int i = 1; i < argc; i++) {
@@ -331,8 +341,8 @@ int main(int argc, char** argv)
     if (nfiles < 1) {
 	// test_rects(sfb, 200);
 	// test_lines(sfb, 500);
-	test_text(sfb, 5000);
-	test_circles(sfb, 25000);
+	test_text(sfb, 500);
+	// test_circles(sfb, 250);
 	usage(argv);
 	return 1;
     }
