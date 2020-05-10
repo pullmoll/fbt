@@ -3,4 +3,4 @@ AM_LDFLAGS = -L/usr/lib
 
 bin_PROGRAMS = fbt
 fbt_SOURCES = fbt.c
-fbt_LDADD = -lgd $(top_srcdir)/libsfb/libsfb.la
+fbt_LDADD = -lgd ../libsfb/libsfb.la
