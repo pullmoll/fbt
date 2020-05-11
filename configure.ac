@@ -22,7 +22,7 @@ AC_PROG_MAKE_SET
 AC_CHECK_LIB([gd], [gdVersionString])
 
 # Checks for header files.
-AC_CHECK_HEADERS([fcntl.h locale.h stdint.h stdlib.h string.h \
+AC_CHECK_HEADERS([fcntl.h locale.h stdio.h stdint.h stdlib.h string.h \
  sys/ioctl.h sys/mman.h sys/types.h sys/ioctl.h time.h unistd.h \
  linux/fb.h gd.h])
 

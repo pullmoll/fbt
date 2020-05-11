@@ -36,8 +36,6 @@ struct sfb_s;
 struct gdImageStruct;
 typedef struct gdImageStruct* gdImagePtr;
 
-#define	DEFAULT_FBDEV  "/dev/fb1"
-
 /**
  * @brief Shift direction for @ref fb_shift()
  */
@@ -212,24 +210,31 @@ extern int fb_cx(struct sfb_s* sfb);
 extern int fb_cy(struct sfb_s* sfb);
 extern int fb_bpp(struct sfb_s* sfb);
 extern void fb_gotoxy(struct sfb_s* sfb, int x, int y);
-extern color_t fb_rgb2pix(struct sfb_s* sfb, int r, int g, int b);
-extern color_t fb_col2pix(struct sfb_s* sfb, color_e color);
+extern int fb_opaque(struct sfb_s* sfb);
+extern color_t fb_bgcolor(struct sfb_s* sfb);
+extern color_t fb_fgcolor(struct sfb_s* sfb);
+extern void fb_set_opaque(struct sfb_s* sfb, int opaque);
+extern void fb_set_bgcolor(struct sfb_s* sfb, color_t bg);
+extern void fb_set_fgcolor(struct sfb_s* sfb, color_t fg);
+
+extern color_t fb_rgb2pixel(struct sfb_s* sfb, int r, int g, int b);
+extern color_t fb_color2pixel(struct sfb_s* sfb, color_e color);
 
 extern void fb_clear(struct sfb_s* sfb);
-extern void fb_clear_color(struct sfb_s* sfb, color_t color);
 extern color_t fb_getpixel(struct sfb_s* sfb, int x, int y);
-extern void fb_setpixel(struct sfb_s* sfb, int x, int y, color_t color);
-extern void fb_hline(struct sfb_s* sfb, int x, int y, int l, color_t color);
-extern void fb_vline(struct sfb_s* sfb, int x, int y, int l, color_t color);
-extern void fb_line(struct sfb_s* sfb, int x1, int y1, int x2, int y2, color_t color);
-extern void fb_rect(struct sfb_s* sfb, int x1, int y1, int x2, int y2, color_t color);
-extern void fb_fill(struct sfb_s* sfb, int x1, int y1, int x2, int y2, color_t color);
-extern void fb_circle_octants(struct sfb_s* sfb, unsigned char oct, int x, int y, int r, color_t color);
-extern void fb_circle(struct sfb_s* sfb, int x, int y, int r, color_t color);
-extern void fb_disc_octants(struct sfb_s* sfb, unsigned char oct, int x, int y, int r, color_t color);
-extern void fb_disc(struct sfb_s* sfb, int x, int y, int r, color_t color);
+extern void fb_setpixel(struct sfb_s* sfb, int x, int y);
+extern void fb_hline(struct sfb_s* sfb, int x, int y, int l);
+extern void fb_vline(struct sfb_s* sfb, int x, int y, int l);
+
+extern void fb_line(struct sfb_s* sfb, int x1, int y1, int x2, int y2);
+extern void fb_rect(struct sfb_s* sfb, int x1, int y1, int x2, int y2);
+extern void fb_fill(struct sfb_s* sfb, int x1, int y1, int x2, int y2);
+extern void fb_circle_octants(struct sfb_s* sfb, unsigned char oct, int x, int y, int r);
+extern void fb_circle(struct sfb_s* sfb, int x, int y, int r);
+extern void fb_disc_octants(struct sfb_s* sfb, unsigned char oct, int x, int y, int r);
+extern void fb_disc(struct sfb_s* sfb, int x, int y, int r);
 extern void fb_shift(struct sfb_s* sfb, shift_dir_e dir, int pixels);
-extern void fb_putc(struct sfb_s* sfb, color_t color, wchar_t wc);
-extern size_t fb_puts(struct sfb_s* sfb, color_t color, const char* text);
-extern size_t fb_printf(struct sfb_s* sfb, color_t color, const char* format, ...);
+extern void fb_putc(struct sfb_s* sfb, wchar_t wc);
+extern size_t fb_puts(struct sfb_s* sfb, const char* text);
+extern size_t fb_printf(struct sfb_s* sfb, const char* format, ...);
 extern void fb_dump(struct sfb_s* sfb, gdImagePtr im);

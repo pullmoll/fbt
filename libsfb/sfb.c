@@ -34,6 +34,10 @@
 #include "config.h"
 #endif
 
+#if !defined(DEFAULT_FBDEV)
+#define	DEFAULT_FBDEV  "/dev/fb1"
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -130,37 +134,46 @@ typedef struct sfb_s {
     uint32_t (*getpixel)(struct sfb_s* sfb, int x, int y);
 
     /** @brief pointer to the function to set a pixel for a specific depth */
-    void (*setpixel)(struct sfb_s* sfb, int x, int y, color_t color);
+    void (*setpixel)(struct sfb_s* sfb, int x, int y);
 
     /** @brief pointer to the function to write a horizontal line for a specific depth */
-    void (*hline)(struct sfb_s* sfb, int x, int y, int l, color_t color);
+    void (*hline)(struct sfb_s* sfb, int x, int y, int l);
 
     /** @brief pointer to the function to write a vertical line for a specific depth */
-    void (*vline)(struct sfb_s* sfb, int x, int y, int l, color_t color);
+    void (*vline)(struct sfb_s* sfb, int x, int y, int l);
 
     /** @brief pointer to font to use */
     const fbfont_t* font;
 
+    /** @brief current background mode */
+    color_t opaque;
+
+    /** @brief current background color */
+    color_t bgcolor;
+
+    /** @brief current foreground color */
+    color_t fgcolor;
+
     /** @brief cursor x coordinate */
-    int curx;
+    int cursor_x;
 
     /** @brief cursor y coordinate */
-    int cury;
+    int cursor_y;
 }   sfb_t;
 
 /**
  * @brief Check for a valid pointer to a struct sfb_s
  */
-#define CHECK_FB(fb) do {		    \
-    if (!fb || SFB_MAGIC != fb->magic) {    \
+#define CHECK_FB(_fb) do {		    \
+    if (!_fb || SFB_MAGIC != _fb->magic) {  \
 	return;				    \
     }					    \
 } while (0)
 /**
  * @brief Check for a valid pointer to a struct sfb_s
  */
-#define CHECK_FB_RET(fb,_retval) do {	    \
-    if (!fb || SFB_MAGIC != fb->magic) {    \
+#define CHECK_FB_RET(_fb,_retval) do {	    \
+    if (!_fb || SFB_MAGIC != _fb->magic) {  \
 	return _retval;			    \
     }					    \
 } while (0)
@@ -182,6 +195,13 @@ static void error(sfb_t* fb, const char* format, ...)
     va_start(ap, format);
     vsnprintf(fb->errmsg, sizeof(fb->errmsg), format, ap);
     va_end(ap);
+}
+
+static void swap_fg_bg(sfb_t* fb)
+{
+    const uint32_t temp = fb->fgcolor;
+    fb->fgcolor = fb->bgcolor;
+    fb->bgcolor = temp;
 }
 
 /**
@@ -260,7 +280,7 @@ static color_t rgb2pix_32bpp(int r, int g, int b)
  * 0 <= x < w and 0 <= y < h
  * otherwise return 0
  */
-#define	RANGE_CHECK_GETPIXEL(_fb) do {	\
+#define	CHECK_RANGE_GETPIXEL(_fb) do {	\
     if (x < 0 ||			\
 	x >= (_fb)->w ||		\
 	y < 0 ||			\
@@ -279,7 +299,7 @@ static color_t rgb2pix_32bpp(int r, int g, int b)
  */
 static color_t getpixel_1bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_GETPIXEL(fb);
+    CHECK_RANGE_GETPIXEL(fb);
 
     off_t pos =
 	    ((x + fb->x) + 7) / 8 +
@@ -298,7 +318,7 @@ static color_t getpixel_1bpp(sfb_t* fb, int x, int y)
  */
 static color_t getpixel_8bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_GETPIXEL(fb);
+    CHECK_RANGE_GETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) +
@@ -317,7 +337,7 @@ static color_t getpixel_8bpp(sfb_t* fb, int x, int y)
  */
 static color_t getpixel_16bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_GETPIXEL(fb);
+    CHECK_RANGE_GETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 2 +
@@ -337,7 +357,7 @@ static color_t getpixel_16bpp(sfb_t* fb, int x, int y)
  */
 static color_t getpixel_24bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_GETPIXEL(fb);
+    CHECK_RANGE_GETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 3 +
@@ -358,7 +378,7 @@ static color_t getpixel_24bpp(sfb_t* fb, int x, int y)
  */
 static color_t getpixel_32bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_GETPIXEL(fb);
+    CHECK_RANGE_GETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 4 +
@@ -375,7 +395,7 @@ static color_t getpixel_32bpp(sfb_t* fb, int x, int y)
  * 0 <= x < w and 0 <= y < h
  * otherwise return
  */
-#define	RANGE_CHECK_SETPIXEL(_fb) do {	\
+#define	CHECK_RANGE_SETPIXEL(_fb) do {	\
     if (x < 0 ||			\
 	x >= (_fb)->w ||		\
 	y < 0 ||			\
@@ -390,17 +410,16 @@ static color_t getpixel_32bpp(sfb_t* fb, int x, int y)
  * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
- * @param color pixel color to set
  */
-static void setpixel_1bpp(sfb_t* fb, int x, int y, color_t color)
+static void setpixel_1bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_SETPIXEL(fb);
+    CHECK_RANGE_SETPIXEL(fb);
 
     off_t pos =
 	    ((x + fb->x) + 7) / 8 +
 	    (y + fb->y) * fb->stride;
 
-    if (color) {
+    if (fb->fgcolor) {
 	fb->fbp[pos] |= (0x80 >> (x & 7));
     } else {
 	fb->fbp[pos] &= ~(0x80 >> (x & 7));
@@ -413,17 +432,16 @@ static void setpixel_1bpp(sfb_t* fb, int x, int y, color_t color)
  * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
- * @param color pixel color to set
  */
-static void setpixel_8bpp(sfb_t* fb, int x, int y, color_t color)
+static void setpixel_8bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_SETPIXEL(fb);
+    CHECK_RANGE_SETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) +
 	    (y + fb->y) * fb->stride;;
 
-    fb->fbp[pos] = (uint8_t) color;
+    fb->fbp[pos] = (uint8_t) fb->fgcolor;
 }
 
 /**
@@ -432,18 +450,17 @@ static void setpixel_8bpp(sfb_t* fb, int x, int y, color_t color)
  * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
- * @param color pixel color to set
  */
-static void setpixel_16bpp(sfb_t* fb, int x, int y, color_t color)
+static void setpixel_16bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_SETPIXEL(fb);
+    CHECK_RANGE_SETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 2 +
 	    (y + fb->y) * fb->stride;;
 
-    fb->fbp[pos+0] = (uint8_t)(color >> 0);
-    fb->fbp[pos+1] = (uint8_t)(color >> 8);
+    fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >> 0);
+    fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >> 8);
 }
 
 /**
@@ -452,19 +469,18 @@ static void setpixel_16bpp(sfb_t* fb, int x, int y, color_t color)
  * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
- * @param color pixel color to set
  */
-static void setpixel_24bpp(sfb_t* fb, int x, int y, color_t color)
+static void setpixel_24bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_SETPIXEL(fb);
+    CHECK_RANGE_SETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 3 +
 	    (y + fb->y) * fb->stride;;
 
-    fb->fbp[pos+0] = (uint8_t)(color >>  0);
-    fb->fbp[pos+1] = (uint8_t)(color >>  8);
-    fb->fbp[pos+2] = (uint8_t)(color >> 16);
+    fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >>  0);
+    fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >>  8);
+    fb->fbp[pos+2] = (uint8_t)(fb->fgcolor >> 16);
 }
 
 /**
@@ -473,20 +489,19 @@ static void setpixel_24bpp(sfb_t* fb, int x, int y, color_t color)
  * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
- * @param color pixel color to set
  */
-static void setpixel_32bpp(sfb_t* fb, int x, int y, color_t color)
+static void setpixel_32bpp(sfb_t* fb, int x, int y)
 {
-    RANGE_CHECK_SETPIXEL(fb);
+    CHECK_RANGE_SETPIXEL(fb);
 
     off_t pos =
 	    (x + fb->x) * 4 +
 	    (y + fb->y) * fb->stride;;
 
-    fb->fbp[pos+0] = (uint8_t)(color >>  0);
-    fb->fbp[pos+1] = (uint8_t)(color >>  8);
-    fb->fbp[pos+2] = (uint8_t)(color >> 16);
-    fb->fbp[pos+3] = (uint8_t)(color >> 24);
+    fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >>  0);
+    fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >>  8);
+    fb->fbp[pos+2] = (uint8_t)(fb->fgcolor >> 16);
+    fb->fbp[pos+3] = (uint8_t)(fb->fgcolor >> 24);
 }
 
 /**
@@ -495,10 +510,13 @@ static void setpixel_32bpp(sfb_t* fb, int x, int y, color_t color)
  * 0 <= x < w and 0 <= y < h and l > 0
  * otherwise return
  */
-#define	RANGE_CHECK_HLINE(_fb) do { \
+#define	CHECK_RANGE_HLINE(_fb) do { \
     if (x < 0) {		    \
 	l += x;			    \
 	x = 0;			    \
+        if (l <= 0) {		    \
+	    return;		    \
+        }                           \
     }				    \
     if (x + l >= fb->w) {	    \
 	l = fb->w - x;		    \
@@ -519,21 +537,16 @@ static void setpixel_32bpp(sfb_t* fb, int x, int y, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void hline_1bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void hline_1bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_HLINE(fb);
+    CHECK_RANGE_HLINE(fb);
 
     off_t pos =
 	    ((x + fb->x) + 7) / 8 +
 	    (y + fb->y) * fb->stride;
 
-    if (x + l >= fb->w) {
-	l = fb->w - x;
-    }
-
-    if (color) {
+    if (fb->fgcolor) {
 	while (l-- > 0) {
 	    fb->fbp[pos] |= (0x80 >> (x & 7));
 	    x++;
@@ -557,22 +570,17 @@ static void hline_1bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void hline_8bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void hline_8bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_HLINE(fb);
+    CHECK_RANGE_HLINE(fb);
 
     off_t pos =
 	    (x + fb->x) +
 	    (y + fb->y) * fb->stride;;
 
-    if (x + l >= fb->w) {
-	l = fb->w - x;
-    }
-
     while (l-- > 0) {
-	fb->fbp[pos++] = (uint8_t) color;
+	fb->fbp[pos++] = (uint8_t) fb->fgcolor;
     }
 }
 
@@ -583,23 +591,18 @@ static void hline_8bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void hline_16bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void hline_16bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_HLINE(fb);
+    CHECK_RANGE_HLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 2 +
 	    (y + fb->y) * fb->stride;;
 
-    if (x + l >= fb->w) {
-	l = fb->w - x;
-    }
-
     while (l-- > 0) {
-	fb->fbp[pos+0] = (uint8_t)(color >> 0);
-	fb->fbp[pos+1] = (uint8_t)(color >> 8);
+	fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >> 0);
+	fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >> 8);
 	pos += 2;
     }
 }
@@ -611,24 +614,19 @@ static void hline_16bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void hline_24bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void hline_24bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_HLINE(fb);
+    CHECK_RANGE_HLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 3 +
 	    (y + fb->y) * fb->stride;;
 
-    if (x + l >= fb->w) {
-	l = fb->w - x;
-    }
-
     while (l-- > 0) {
-	fb->fbp[pos+0] = (uint8_t)(color >>  0);
-	fb->fbp[pos+1] = (uint8_t)(color >>  8);
-	fb->fbp[pos+2] = (uint8_t)(color >> 16);
+	fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >>  0);
+	fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >>  8);
+	fb->fbp[pos+2] = (uint8_t)(fb->fgcolor >> 16);
 	pos += 3;
     }
 }
@@ -640,25 +638,20 @@ static void hline_24bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void hline_32bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void hline_32bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_HLINE(fb);
+    CHECK_RANGE_HLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 4 +
 	    (y + fb->y) * fb->stride;;
 
-    if (x + l >= fb->w) {
-	l = fb->w - x;
-    }
-
     while (l-- > 0) {
-	fb->fbp[pos+0] = (uint8_t)(color >>  0);
-	fb->fbp[pos+1] = (uint8_t)(color >>  8);
-	fb->fbp[pos+2] = (uint8_t)(color >> 16);
-	fb->fbp[pos+3] = (uint8_t)(color >> 24);
+	fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >>  0);
+	fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >>  8);
+	fb->fbp[pos+2] = (uint8_t)(fb->fgcolor >> 16);
+	fb->fbp[pos+3] = (uint8_t)(fb->fgcolor >> 24);
 	pos += 4;
     }
 }
@@ -669,13 +662,16 @@ static void hline_32bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * 0 <= x < w and 0 <= y < h and l > 0
  * otherwise return
  */
-#define	RANGE_CHECK_VLINE(_fb) do { \
+#define	CHECK_RANGE_VLINE(_fb) do { \
     if (y < 0) {		    \
 	l += y;			    \
 	y = 0;			    \
+        if (l <= 0) {		    \
+	    return;		    \
+        }                           \
     }				    \
     if (y + l >= (_fb)->h) {	    \
-	l = (_fb)->w - x;	    \
+	l = (_fb)->h - y;	    \
     }				    \
     if (l <= 0 ||		    \
 	x < 0 ||		    \
@@ -693,21 +689,16 @@ static void hline_32bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void vline_1bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void vline_1bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_VLINE(fb);
+    CHECK_RANGE_VLINE(fb);
 
     off_t pos =
 	    ((x + fb->x) + 7) / 8 +
 	    (y + fb->y) * fb->stride;
 
-    if (y + l >= fb->h) {
-	l = fb->h - y;
-    }
-
-    if (color) {
+    if (fb->fgcolor) {
 	while (l-- > 0) {
 	    fb->fbp[pos] |= (0x80 >> (x & 7));
 	    pos += fb->stride;
@@ -727,22 +718,17 @@ static void vline_1bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void vline_8bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void vline_8bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_VLINE(fb);
+    CHECK_RANGE_VLINE(fb);
 
     off_t pos =
 	    (x + fb->x) +
 	    (y + fb->y) * fb->stride;;
 
-    if (y + l >= fb->h) {
-	l = fb->h - y;
-    }
-
     while (l-- > 0) {
-	fb->fbp[pos] = (uint8_t) color;
+	fb->fbp[pos] = (uint8_t) fb->fgcolor;
 	pos += fb->stride;
     }
 }
@@ -754,23 +740,18 @@ static void vline_8bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void vline_16bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void vline_16bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_VLINE(fb);
+    CHECK_RANGE_VLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 2 +
 	    (y + fb->y) * fb->stride;;
 
-    if (y + l >= fb->h) {
-	l = fb->h - y;
-    }
-
     while (l-- > 0) {
-	fb->fbp[pos+0] = (uint8_t)(color >> 0);
-	fb->fbp[pos+1] = (uint8_t)(color >> 8);
+	fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >> 0);
+	fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >> 8);
 	pos += fb->stride;
     }
 }
@@ -782,24 +763,19 @@ static void vline_16bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void vline_24bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void vline_24bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_VLINE(fb);
+    CHECK_RANGE_VLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 3 +
 	    (y + fb->y) * fb->stride;;
 
-    if (y + l >= fb->h) {
-	l = fb->h - y;
-    }
-
     while (l-- > 0) {
-	fb->fbp[pos+0] = (uint8_t)(color >>  0);
-	fb->fbp[pos+1] = (uint8_t)(color >>  8);
-	fb->fbp[pos+2] = (uint8_t)(color >> 16);
+	fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >>  0);
+	fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >>  8);
+	fb->fbp[pos+2] = (uint8_t)(fb->fgcolor >> 16);
 	pos += fb->stride;
     }
 }
@@ -811,25 +787,20 @@ static void vline_24bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-static void vline_32bpp(sfb_t* fb, int x, int y, int l, color_t color)
+static void vline_32bpp(sfb_t* fb, int x, int y, int l)
 {
-    RANGE_CHECK_VLINE(fb);
+    CHECK_RANGE_VLINE(fb);
 
     off_t pos =
 	    (x + fb->x) * 4 +
 	    (y + fb->y) * fb->stride;;
 
-    if (y + l >= fb->h) {
-	l = fb->h - y;
-    }
-
     while (l-- > 0) {
-	fb->fbp[pos+0] = (uint8_t)(color >>  0);
-	fb->fbp[pos+1] = (uint8_t)(color >>  8);
-	fb->fbp[pos+2] = (uint8_t)(color >> 16);
-	fb->fbp[pos+3] = (uint8_t)(color >> 24);
+	fb->fbp[pos+0] = (uint8_t)(fb->fgcolor >>  0);
+	fb->fbp[pos+1] = (uint8_t)(fb->fgcolor >>  8);
+	fb->fbp[pos+2] = (uint8_t)(fb->fgcolor >> 16);
+	fb->fbp[pos+3] = (uint8_t)(fb->fgcolor >> 24);
 	pos += fb->stride;
     }
 }
@@ -842,9 +813,8 @@ static void vline_32bpp(sfb_t* fb, int x, int y, int l, color_t color)
  * @param y1 line start y coordinate
  * @param x2 line end x coordinate
  * @param y2 line end y coordinate
- * @param color pixel color
  */
-void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
+void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2)
 {
     CHECK_FB(fb);
     const int sx = x1 < x2 ? 1 : -1;
@@ -856,7 +826,7 @@ void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
 	// Loop for x coordinates
 	int dda = dx / 2;
 	while (x1 != x2) {
-	    fb->setpixel(fb, x1, y1, color);
+	    fb->setpixel(fb, x1, y1);
 	    x1 += sx;
 	    dda -= dy;
 	    if (dda <= 0) {
@@ -868,7 +838,7 @@ void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
 	// Loop for y coordinates
 	int dda = dy / 2;
 	while (y1 != y2) {
-	    fb->setpixel(fb, x1, y1, color);
+	    fb->setpixel(fb, x1, y1);
 	    y1 += sy;
 	    dda -= dx;
 	    if (dda <= 0) {
@@ -887,9 +857,8 @@ void fb_line(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
  * @param y1 first corner y coordinate
  * @param x2 opposite corner x coordinate
  * @param y2 opposite corner y coordinate
- * @param color pixel color
  */
-void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
+void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2)
 {
     CHECK_FB(fb);
     const int tl_x = x1 <= x2 ? x1 : x2;
@@ -899,10 +868,10 @@ void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
     const int w = br_x + 1 - tl_x;
     const int h = br_y + 1 - tl_y;
 
-    fb->hline(fb, tl_x, tl_y, w, color);
-    fb->hline(fb, tl_x, br_y, w, color);
-    fb->vline(fb, tl_x, tl_y, h, color);
-    fb->vline(fb, br_x, tl_y, h, color);
+    fb->hline(fb, tl_x, tl_y, w);
+    fb->hline(fb, tl_x, br_y, w);
+    fb->vline(fb, tl_x, tl_y, h);
+    fb->vline(fb, br_x, tl_y, h);
 }
 
 /**
@@ -913,9 +882,8 @@ void fb_rect(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
  * @param y1 first corner y coordinate
  * @param x2 opposite corner x coordinate
  * @param y2 opposite corner y coordinate
- * @param color pixel color
  */
-void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
+void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2)
 {
     CHECK_FB(fb);
     const int tl_x = x1 <= x2 ? x1 : x2;
@@ -926,7 +894,7 @@ void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
     const int h = br_y + 1 - tl_y;
 
     for (int i = 0; i < h; i++)
-	fb->hline(fb, tl_x, tl_y + i, w, color);
+	fb->hline(fb, tl_x, tl_y + i, w);
 }
 
 /**
@@ -937,9 +905,8 @@ void fb_fill(sfb_t *fb, int x1, int y1, int x2, int y2, color_t color)
  * @param x center x coordinate
  * @param y center y coordinate
  * @param r radius in pixels
- * @param color pixel color
  */
-void fb_circle_octants(sfb_t *fb, uint8_t oct, int x, int y, int r, color_t color)
+void fb_circle_octants(sfb_t *fb, uint8_t oct, int x, int y, int r)
 {
     CHECK_FB(fb);
     int dda = r;
@@ -947,21 +914,21 @@ void fb_circle_octants(sfb_t *fb, uint8_t oct, int x, int y, int r, color_t colo
     int dy = 0;
     while (dx >= dy) {
 	if (oct & (1 << 0))
-	    fb->setpixel(fb, x + dx, y - dy, color);
+	    fb->setpixel(fb, x + dx, y - dy);
 	if (oct & (1 << 1))
-	    fb->setpixel(fb, x + dy, y - dx, color);
+	    fb->setpixel(fb, x + dy, y - dx);
 	if (oct & (1 << 2))
-	    fb->setpixel(fb, x - dy, y - dx, color);
+	    fb->setpixel(fb, x - dy, y - dx);
 	if (oct & (1 << 3))
-	    fb->setpixel(fb, x - dx, y - dy, color);
+	    fb->setpixel(fb, x - dx, y - dy);
 	if (oct & (1 << 4))
-	    fb->setpixel(fb, x - dx, y + dy, color);
+	    fb->setpixel(fb, x - dx, y + dy);
 	if (oct & (1 << 5))
-	    fb->setpixel(fb, x - dy, y + dx, color);
+	    fb->setpixel(fb, x - dy, y + dx);
 	if (oct & (1 << 6))
-	    fb->setpixel(fb, x + dy, y + dx, color);
+	    fb->setpixel(fb, x + dy, y + dx);
 	if (oct & (1 << 7))
-	    fb->setpixel(fb, x + dx, y + dy, color);
+	    fb->setpixel(fb, x + dx, y + dy);
 
 	dy++;
 	dda -= dy;
@@ -979,12 +946,11 @@ void fb_circle_octants(sfb_t *fb, uint8_t oct, int x, int y, int r, color_t colo
  * @param x center x coordinate
  * @param y center y coordinate
  * @param r radius in pixels
- * @param color pixel color
  */
-void fb_circle(sfb_t *fb, int x, int y, int r, color_t color)
+void fb_circle(sfb_t *fb, int x, int y, int r)
 {
     CHECK_FB(fb);
-    fb_circle_octants(fb, 0xff, x, y, r, color);
+    fb_circle_octants(fb, 0xff, x, y, r);
 }
 
 /**
@@ -995,9 +961,8 @@ void fb_circle(sfb_t *fb, int x, int y, int r, color_t color)
  * @param x center x coordinate
  * @param y center y coordinate
  * @param r radius in pixels
- * @param color pixel color
  */
-void fb_disc_octants(sfb_t *fb, uint8_t oct, int x, int y, int r, color_t color)
+void fb_disc_octants(sfb_t *fb, uint8_t oct, int x, int y, int r)
 {
     CHECK_FB(fb);
     int dda = r;
@@ -1006,21 +971,21 @@ void fb_disc_octants(sfb_t *fb, uint8_t oct, int x, int y, int r, color_t color)
     while (dx >= dy) {
 	const int l = dx - dy;
 	if (oct & (1 << 0))
-	    fb->hline(fb, x + dy, y - dy, l, color);
+	    fb->hline(fb, x + dy, y - dy, l);
 	if (oct & (1 << 1))
-	    fb->vline(fb, x + dy, y - dx, l, color);
+	    fb->vline(fb, x + dy, y - dx, l);
 	if (oct & (1 << 2))
-	    fb->vline(fb, x - dy, y - dx, l, color);
+	    fb->vline(fb, x - dy, y - dx, l);
 	if (oct & (1 << 3))
-	    fb->hline(fb, x - dx, y - dy, l + 1, color); // FIXME: + 1 or there is a gap?
+	    fb->hline(fb, x - dx, y - dy, l + 1); // FIXME: + 1 or there is a gap?
 	if (oct & (1 << 4))
-	    fb->hline(fb, x - dx, y + dy, l, color);
+	    fb->hline(fb, x - dx, y + dy, l);
 	if (oct & (1 << 5))
-	    fb->vline(fb, x - dy, y + dy, l, color);
+	    fb->vline(fb, x - dy, y + dy, l);
 	if (oct & (1 << 6))
-	    fb->vline(fb, x + dy, y + dy, l, color);
+	    fb->vline(fb, x + dy, y + dy, l);
 	if (oct & (1 << 7))
-	    fb->hline(fb, x + dy, y + dy, l, color);
+	    fb->hline(fb, x + dy, y + dy, l);
 	dy++;
 	dda -= dy;
 	if (dda < 0) {
@@ -1037,12 +1002,11 @@ void fb_disc_octants(sfb_t *fb, uint8_t oct, int x, int y, int r, color_t color)
  * @param x center x coordinate
  * @param y center y coordinate
  * @param r radius in pixels
- * @param color pixel color
  */
-void fb_disc(sfb_t *fb, int x, int y, int r, color_t color)
+void fb_disc(sfb_t *fb, int x, int y, int r)
 {
     CHECK_FB(fb);
-    fb_disc_octants(fb, 0xff, x, y, r, color);
+    fb_disc_octants(fb, 0xff, x, y, r);
 }
 
 /**
@@ -1060,7 +1024,7 @@ int fb_init(struct sfb_s** sfb, const char* devname)
     *sfb = NULL;
     fb->magic = SFB_MAGIC;
     fb->fbp = MAP_FAILED;
-    fb->font = &font_9x15;
+    fb->font = &font_10x20;
 
     fb->fd = open(devname, O_RDWR);
     if (-1 == fb->fd) {
@@ -1140,6 +1104,9 @@ int fb_init(struct sfb_s** sfb, const char* devname)
 	free(fb);
 	return -5;
     }
+    fb->bgcolor = fb_color2pixel(fb, color_Black);
+    fb->fgcolor = fb_color2pixel(fb, color_White);
+    fb->opaque = 1;
 
     *sfb = fb;
 
@@ -1238,7 +1205,7 @@ int fb_bpp(sfb_t* fb)
 int fb_cx(sfb_t* fb)
 {
     CHECK_FB_RET(fb, 0);
-    return fb->curx;
+    return fb->cursor_x;
 }
 
 /**
@@ -1248,7 +1215,7 @@ int fb_cx(sfb_t* fb)
 int fb_cy(sfb_t* fb)
 {
     CHECK_FB_RET(fb, 0);
-    return fb->cury;
+    return fb->cursor_y;
 }
 
 /**
@@ -1260,8 +1227,74 @@ int fb_cy(sfb_t* fb)
 void fb_gotoxy(sfb_t* fb, int x, int y)
 {
     CHECK_FB(fb);
-    fb->curx = BOUND(x, 0, fb->w - 1);
-    fb->cury = BOUND(y, 0, fb->h - 1);
+    fb->cursor_x = BOUND(x, 0, fb->w - 1);
+    fb->cursor_y = BOUND(y, 0, fb->h - 1);
+}
+
+/**
+ * @brief Return the background mode
+ * @param fb pointer to the frame buffer context
+ * @return background mode: 0 transparent, 1 opaque
+ */
+int fb_opaque(sfb_t* fb)
+{
+    CHECK_FB_RET(fb, 0);
+    return fb->opaque;
+}
+
+/**
+ * @brief Return the background color
+ * @param fb pointer to the frame buffer context
+ * @return background color
+ */
+color_t fb_bgcolor(sfb_t* fb)
+{
+    CHECK_FB_RET(fb, 0);
+    return fb->bgcolor;
+}
+
+/**
+ * @brief Return the foreground color
+ * @param fb pointer to the frame buffer context
+ * @return foreground color
+ */
+color_t fb_fgcolor(sfb_t* fb)
+{
+    CHECK_FB_RET(fb, 0);
+    return fb->fgcolor;
+}
+
+/**
+ * @brief Set the background mode
+ * @param fb pointer to the frame buffer context
+ * @param mode background mode to set (0: transparent, 1: opaque)
+ */
+void fb_set_opaque(sfb_t* fb, int mode)
+{
+    CHECK_FB(fb);
+    fb->opaque = mode & 1;
+}
+
+/**
+ * @brief Set the background color
+ * @param fb pointer to the frame buffer context
+ * @param bg background color to set
+ */
+void fb_set_bgcolor(sfb_t* fb, color_t bg)
+{
+    CHECK_FB(fb);
+    fb->bgcolor = bg;
+}
+
+/**
+ * @brief Set the foreground color
+ * @param fb pointer to the frame buffer context
+ * @param fg foreground color to set
+ */
+void fb_set_fgcolor(sfb_t* fb, color_t fg)
+{
+    CHECK_FB(fb);
+    fb->fgcolor = fg;
 }
 
 /**
@@ -1272,7 +1305,7 @@ void fb_gotoxy(sfb_t* fb, int x, int y)
  * @param b blue value (0 … 255)
  * @return color_t pixel value for the frame buffer depth
  */
-color_t fb_rgb2pix(sfb_t* fb, int r, int g, int b)
+color_t fb_rgb2pixel(sfb_t* fb, int r, int g, int b)
 {
     CHECK_FB_RET(fb, (color_t)~0u);
     return fb->rgb2pix(r, g, b);
@@ -1281,10 +1314,9 @@ color_t fb_rgb2pix(sfb_t* fb, int r, int g, int b)
 /**
  * @brief Convert color_e value @p color to a pixel value (color_t)
  * @param fb pointer to the frame buffer context
- * @param color enumeration value from color_e
  * @return color_t pixel value for the frame buffer depth
  */
-color_t fb_col2pix(sfb_t* fb, color_e color)
+color_t fb_color2pixel(sfb_t* fb, color_e color)
 {
     CHECK_FB_RET(fb, (color_t)~0u);
     const int r = (color >>  0) & 0xff;
@@ -1301,7 +1333,35 @@ void fb_clear(sfb_t* fb)
 {
     CHECK_FB(fb);
     assert(fb->fbp != MAP_FAILED);
-    memset(fb->fbp, 0, fb->size);
+    switch (fb->bpp) {
+    case 1:
+	memset(fb->fbp, fb->bgcolor ? 0xff : 0x00, fb->size);
+	break;
+    case 8:
+	memset(fb->fbp, fb->bgcolor, fb->size);
+	break;
+    case 16:
+	for (off_t off = 0; off < fb->size; off += 2) {
+	    fb->fbp[off+0] = (uint8_t)(fb->bgcolor >> 0);
+	    fb->fbp[off+1] = (uint8_t)(fb->bgcolor >> 8);
+	}
+	break;
+    case 24:
+	for (off_t off = 0; off < fb->size; off += 3) {
+	    fb->fbp[off+0] = (uint8_t)(fb->bgcolor >>  0);
+	    fb->fbp[off+1] = (uint8_t)(fb->bgcolor >>  8);
+	    fb->fbp[off+2] = (uint8_t)(fb->bgcolor >> 16);
+	}
+	break;
+    case 32:
+	for (off_t off = 0; off < fb->size; off += 4) {
+	    fb->fbp[off+0] = (uint8_t)(fb->bgcolor >>  0);
+	    fb->fbp[off+1] = (uint8_t)(fb->bgcolor >>  8);
+	    fb->fbp[off+2] = (uint8_t)(fb->bgcolor >> 16);
+	    fb->fbp[off+3] = 0xff;
+	}
+	break;
+    }
 }
 
 /**
@@ -1361,13 +1421,11 @@ color_t fb_getpixel(sfb_t* fb, int x, int y)
  * @param fb pointer to the frame buffer context
  * @param x coordinate
  * @param y coordinate
- * @param color pixel color
- * @return pixel value
  */
-void fb_setpixel(sfb_t* fb, int x, int y, color_t color)
+void fb_setpixel(sfb_t* fb, int x, int y)
 {
     CHECK_FB(fb);
-    return fb->setpixel(fb, x, y, color);
+    return fb->setpixel(fb, x, y);
 }
 
 /**
@@ -1376,12 +1434,11 @@ void fb_setpixel(sfb_t* fb, int x, int y, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-void fb_hline(sfb_t* fb, int x, int y, int l, color_t color)
+void fb_hline(sfb_t* fb, int x, int y, int l)
 {
     CHECK_FB(fb);
-    return fb->hline(fb, x, y, l, color);
+    return fb->hline(fb, x, y, l);
 }
 
 /**
@@ -1390,21 +1447,19 @@ void fb_hline(sfb_t* fb, int x, int y, int l, color_t color)
  * @param x coordinate
  * @param y coordinate
  * @param l length in pixels
- * @param color pixel color to set
  */
-void fb_vline(sfb_t* fb, int x, int y, int l, color_t color)
+void fb_vline(sfb_t* fb, int x, int y, int l)
 {
     CHECK_FB(fb);
-    return fb->vline(fb, x, y, l, color);
+    return fb->vline(fb, x, y, l);
 }
 
 /**
  * @brief Put a character glyph into the framebuffer
  * @param fb pointer to the frame buffer context
- * @param color pixel color to set
  * @param wc wide character code (unicode) to put
  */
-void fb_putc(sfb_t* fb, color_t color, wchar_t wc)
+void fb_putc(sfb_t* fb, wchar_t wc)
 {
     CHECK_FB(fb);
     const fbfont_t* font = fb->font;
@@ -1417,25 +1472,45 @@ void fb_putc(sfb_t* fb, color_t color, wchar_t wc)
     }
 
     const off_t offs = font->h * glyph;
+    if (fb->opaque) {
+	swap_fg_bg(fb);
+	/* Opaque mode: fill the glyph rectangle */
+	fb_fill(fb,
+	    fb->cursor_x, fb->cursor_y,
+	    fb->cursor_x + font->w - 1, fb->cursor_y + font->h - 1);
+	swap_fg_bg(fb);
+    }
 
     if (font->w <= 8) {
+	/* One uint8_t per glyph row */
         const uint8_t* data = (const uint8_t *)font->data;
         for (int y0 = 0; y0 < font->h; y0++) {
 	    uint8_t bits = data[offs+y0] << (8 - font->w);
 	    for (int x0 = 0; bits && x0 < font->w; bits <<= 1, x0++) {
 	        if (bits & 0x80)
-		    fb->setpixel(fb, fb->curx + x0, fb->cury + y0, color);
+		    fb->setpixel(fb, fb->cursor_x + x0, fb->cursor_y + y0);
 	    }
         }
-    } else {
-        const uint16_t* data = (const uint16_t *)font->data;
+    } else if (font->w <= 16) {
+	/* One uint16_t per glyph row */
+	const uint16_t* data = (const uint16_t *)font->data;
         for (int y0 = 0; y0 < font->h; y0++) {
 	    uint16_t bits = data[offs+y0] << (16 - font->w);
 	    for (int x0 = 0; bits && x0 < font->w; bits <<= 1, x0++) {
 	        if (bits & 0x8000)
-		    fb->setpixel(fb, fb->curx + x0, fb->cury + y0, color);
+		    fb->setpixel(fb, fb->cursor_x + x0, fb->cursor_y + y0);
 	    }
         }
+    } else {
+	/* One uint32_t per glyph row */
+	const uint32_t* data = (const uint32_t *)font->data;
+	for (int y0 = 0; y0 < font->h; y0++) {
+	    uint32_t bits = data[offs+y0] << (32 - font->w);
+	    for (int x0 = 0; bits && x0 < font->w; bits <<= 1, x0++) {
+		if (bits & 0x80000000ul)
+		    fb->setpixel(fb, fb->cursor_x + x0, fb->cursor_y + y0);
+	    }
+	}
     }
 }
 
@@ -1443,14 +1518,13 @@ void fb_putc(sfb_t* fb, color_t color, wchar_t wc)
  * @brief Put a string @p text into the framebuffer using @p color
  *
  * Some control characters are handled:
- *  '\\n' carriage return and line feed (curx = 0, cury += fh, scroll if off screen)
- *  '\\r' carriage return (curx = 0)
+ *  '\\n' carriage return and line feed (cursor_x = 0, cursor_y += fh, scroll if off screen)
+ *  '\\r' carriage return (cursor_x = 0)
  *
  * @param fb pointer to the frame buffer context
- * @param color pixel color to set
  * @param text pointer to NUL terminated string to put
  */
-size_t fb_puts(sfb_t* fb, color_t color, const char* text)
+size_t fb_puts(sfb_t* fb, const char* text)
 {
     CHECK_FB_RET(fb, (size_t)-1);
     const fbfont_t* font = fb->font;
@@ -1479,26 +1553,26 @@ size_t fb_puts(sfb_t* fb, color_t color, const char* text)
 
 	switch (wtext[i]) {
 	case 0x000a:  /* new line (also does carriage return) */
-	    fb->curx = 0;
-	    fb->cury += font->h;
+	    fb->cursor_x = 0;
+	    fb->cursor_y += font->h;
 	    /* need to scroll the frame buffer? */
-	    if (fb->cury + font->h > fb->h) {
+	    if (fb->cursor_y + font->h > fb->h) {
 		fb_shift(fb, shift_up, font->h);
-		fb->cury -= font->h;
+		fb->cursor_y -= font->h;
 	    }
 	    break;
 
 	case 0x000c:  /* form feed */
 	    fb_clear(fb);
-	    fb->curx = fb->cury = 0;
+	    fb->cursor_x = fb->cursor_y = 0;
 	    break;
 
 	case 0x000d:  /* carriage return */
-	    fb->curx = 0;
+	    fb->cursor_x = 0;
 	    break;
 
 	default:
-	    fb_putc(fb, color, wtext[i]);
+	    fb_putc(fb, wtext[i]);
 	    advance = 1;
 	    break;
 	}
@@ -1507,12 +1581,12 @@ size_t fb_puts(sfb_t* fb, color_t color, const char* text)
 	    continue;
 	}
 
-	fb->curx += font->w;
-	if (fb->curx + font->w >= fb->w) {
-	    fb->curx = 0;
-	    fb->cury += font->h;
-	    if (fb->cury + font->h >= fb->h) {
-		fb->cury -= font->h;
+	fb->cursor_x += font->w;
+	if (fb->cursor_x + font->w >= fb->w) {
+	    fb->cursor_x = 0;
+	    fb->cursor_y += font->h;
+	    if (fb->cursor_y + font->h >= fb->h) {
+		fb->cursor_y -= font->h;
 		fb_shift(fb, shift_up, font->h);
 	    }
 	}
@@ -1528,7 +1602,7 @@ size_t fb_puts(sfb_t* fb, color_t color, const char* text)
  * @param format C format string
  * @param ap a va_list of arguments
  */
-static size_t fb_vprintf(sfb_t* fb, color_t color, const char* format, va_list ap)
+static size_t fb_vprintf(sfb_t* fb, const char* format, va_list ap)
 {
     CHECK_FB_RET(fb, (size_t)-1);
 
@@ -1541,7 +1615,7 @@ static size_t fb_vprintf(sfb_t* fb, color_t color, const char* format, va_list a
 
     size = vsnprintf(buffer, size, format, ap);
     if ((int)size > 0) {
-        fb_puts(fb, color, buffer);
+	fb_puts(fb, buffer);
     }
     free(buffer);
     return size;
@@ -1551,15 +1625,14 @@ static size_t fb_vprintf(sfb_t* fb, color_t color, const char* format, va_list a
  * @brief Print a format string and optional arguments
  *
  * @param fb pointer to the frame buffer context
- * @param color pixel color to use
  * @param format C format string followed by optional arguments
  */
-size_t fb_printf(sfb_t* fb, color_t color, const char* format, ...)
+size_t fb_printf(sfb_t* fb, const char* format, ...)
 {
     CHECK_FB_RET(fb, (size_t)-1);
     va_list ap;
     va_start(ap, format);
-    size_t size = fb_vprintf(fb, color, format, ap);
+    size_t size = fb_vprintf(fb, format, ap);
     va_end(ap);
     return size;
 }
@@ -1572,6 +1645,7 @@ size_t fb_printf(sfb_t* fb, color_t color, const char* format, ...)
  */
 void fb_dump(sfb_t* fb, gdImagePtr im)
 {
+    CHECK_FB(fb);
     switch (fb->bpp) {
     case 1:
 	for (int y = 0; y < fb->h; y++) {

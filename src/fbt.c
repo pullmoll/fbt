@@ -33,7 +33,9 @@
 #include "config.h"
 #endif
 
-#include "sfb.h"
+#if !defined(DEFAULT_FBDEV)
+#define	DEFAULT_FBDEV  "/dev/fb1"
+#endif
 
 #if defined(HAVE_STDLIB_H)
 #include <stdlib.h>
@@ -60,6 +62,8 @@
 #if defined(HAVE_GD_H)
 #include <gd.h>
 #endif
+
+#include "sfb.h"
 
 static int verbose = 0;
 static struct sfb_s* sfb;
@@ -102,16 +106,17 @@ static const char* basename(const char* filename)
  */
 void test_rects(struct sfb_s* sfb, int us)
 {
-    for (int n = 0; n < 1000; n++) {
-	const int x1 = rand() % (fb_w(sfb) - 64);
-	const int y1 = rand() % (fb_h(sfb) - 64);
-	const int w = rand() % 64;
-	const int h = rand() % 64;
+    for (int n = 0; n < 5000; n++) {
+	const int x1 = rand() % fb_w(sfb);
+	const int y1 = rand() % fb_h(sfb);
+	const int w = rand() % 256;
+	const int h = rand() % 256;
 	const uint32_t color = rand() & 0x00ffffff;
+	fb_set_fgcolor(sfb, color);
 	if (rand() & 0x4000)
-	    fb_fill(sfb, x1, y1, x1 + w - 1, y1 + h - 1, color);
+	    fb_fill(sfb, x1, y1, x1 + w - 1, y1 + h - 1);
 	else
-	    fb_rect(sfb, x1, y1, x1 + w - 1, y1 + h - 1, color);
+	    fb_rect(sfb, x1, y1, x1 + w - 1, y1 + h - 1);
 	if (us) {
 	    usleep(us);
 	}
@@ -125,15 +130,16 @@ void test_rects(struct sfb_s* sfb, int us)
  */
 void test_lines(struct sfb_s* sfb, int us)
 {
-    for (int x = 0; x < fb_w(sfb); x += 3) {
-	fb_line(sfb, x, 0, fb_w(sfb) - 1 - x, fb_h(sfb) - 1, 0xffffff);
+    fb_set_fgcolor(sfb, color_White);
+    for (int x = 0; x < fb_w(sfb); x += 5) {
+	fb_line(sfb, x, 0, fb_w(sfb) - 1 - x, fb_h(sfb) - 1);
 	if (us) {
 	    usleep(us);
 	}
     }
 
-    for (int y = 0; y < fb_h(sfb); y += 3) {
-	fb_line(sfb, 0, y, fb_w(sfb) - 1, fb_h(sfb) - 1 - y, 0xfffffff);
+    for (int y = 0; y < fb_h(sfb); y += 5) {
+	fb_line(sfb, 0, y, fb_w(sfb) - 1, fb_h(sfb) - 1 - y);
 	if (us) {
 	    usleep(us);
 	}
@@ -147,16 +153,17 @@ void test_lines(struct sfb_s* sfb, int us)
  */
 void test_circles(struct sfb_s* sfb, int us)
 {
-    for (int n = 0; n < 50000; n++) {
+    for (int n = 0; n < 5000; n++) {
 	const int x = rand() % fb_w(sfb);
 	const int y = rand() % fb_h(sfb);
 	const int r = rand() % 64;
         const unsigned char oct = ((rand() & 0xff) == 0x55) ? rand() & 255 : 255;
 	const uint32_t color = rand() & 0x00ffffff;
+	fb_set_fgcolor(sfb, color);
 	if (rand() & 0x4000)
-	    fb_disc_octants(sfb, oct, x, y, r, color);
+	    fb_disc_octants(sfb, oct, x, y, r);
 	else
-	    fb_circle_octants(sfb, oct, x, y, r, color);
+	    fb_circle_octants(sfb, oct, x, y, r);
 	if (us) {
 	    usleep(us);
 	}
@@ -212,12 +219,13 @@ void test_text(struct sfb_s* sfb, int us)
 	    "Dès Noël où un zéphyr haï me vêt de glaçons würmiens,\n"
 	    "je dîne d’exquis rôtis de bœuf au kir à l’aÿ d’âge mûr & cætera !\n";
 
+    fb_set_fgcolor(sfb, color_White);
     for (const char* line = text; *line; line = strchr(line, '\n') + 1) {
         char buff[256];
 	const char* eol = strchr(line, '\n') ? strchr(line, '\n') : line + strlen(line);
 	const size_t len = (size_t)(eol + 1 - line);
 	snprintf(buff, sizeof(buff), "%.*s", (int)len, line);
-        fb_puts(sfb, color_White, buff);
+	fb_puts(sfb, buff);
 	if (us) {
 	    usleep(us);
 	}
@@ -234,6 +242,8 @@ void load_image(struct sfb_s* sfb, const char* filename, int upscale)
 {
     char buff[128], *suffix;
     gdImagePtr im1, im2;
+
+    fb_set_fgcolor(sfb, color_Light_Pink);
 
     im1 = gdImageCreateFromFile(filename);
     if (NULL == im1) {
@@ -284,7 +294,7 @@ void load_image(struct sfb_s* sfb, const char* filename, int upscale)
 	*suffix = '\0';
 
     fb_gotoxy(sfb, 0, fb_h(sfb) - 12);
-    fb_puts(sfb, 0x00ffffff, buff);
+    fb_puts(sfb, buff);
 }
 
 /**
@@ -305,6 +315,7 @@ int main(int argc, char** argv)
     const char* fbdev = DEFAULT_FBDEV;
     int nfiles = 0;
     int upscale = 0;
+    int us = 7500;
 
     setlocale(LC_ALL, "C.UTF-8");
     srand(time(NULL));
@@ -339,10 +350,10 @@ int main(int argc, char** argv)
 
     fb_clear(sfb);
     if (nfiles < 1) {
-	// test_rects(sfb, 200);
-	// test_lines(sfb, 500);
-	test_text(sfb, 500);
-	// test_circles(sfb, 250);
+	test_rects(sfb, us);
+	test_lines(sfb, us);
+	test_text(sfb, us);
+	test_circles(sfb, us);
 	usage(argv);
 	return 1;
     }

@@ -31,6 +31,21 @@
  ****************************************************************************/
 #include <stdlib.h>
 
+/**
+ * @brief the frame buffer font structure contains information
+ * and pointers to data for a bitmapped font.
+ * The width @p w and height @p h should be obvious.
+ *
+ * The @p map contains information about the glyphs which
+ * are defined in a font. This is usually a (subset of)
+ * the ISO-8859-1 glyphs.
+ *
+ * Finally there is a pointer to the bitmap data. Depending
+ * on the width of the font, this is either bytes (uint8_t),
+ * words (uint16_t) or dwords (uint32_t).
+ *
+ * There is one element per glyph row (height).
+ */
 typedef struct fbfont_s {
     int w;                      /*!< font cell width */
     int h;                      /*!< font cell height */
@@ -41,3 +56,4 @@ typedef struct fbfont_s {
 extern const fbfont_t font_6x12;
 extern const fbfont_t font_8x13;
 extern const fbfont_t font_9x15;
+extern const fbfont_t font_10x20;
