@@ -243,7 +243,11 @@ void load_image(struct sfb_s* sfb, const char* filename, int upscale)
     char buff[128], *suffix;
     gdImagePtr im1, im2;
 
-    fb_set_fgcolor(sfb, color_Light_Pink);
+    fb_set_font(sfb, Font_8x13);
+    fb_set_bgcolor(sfb, color_Black);
+    fb_clear(sfb);
+    fb_set_fgcolor(sfb, color_Light_Yellow);
+    fb_set_opaque(sfb, 0); 
 
     im1 = gdImageCreateFromFile(filename);
     if (NULL == im1) {
@@ -282,7 +286,7 @@ void load_image(struct sfb_s* sfb, const char* filename, int upscale)
 	const int x_dst = (fb_w(sfb) - w_dst) / 2;
 	const int y_dst = (fb_h(sfb) - h_dst) / 2;
 	info(1, "Copy to %dx%d at %d,%d\n", w_dst, h_dst, x_dst, y_dst);
-	gdImageCopy(im2, im1, w_dst, w_dst, 0, 0, w_src, h_src);
+	gdImageCopy(im2, im1, x_dst, y_dst, 0, 0, w_src, h_src);
     }
     fb_dump(sfb, im2);
     gdImageDestroy(im2);
@@ -293,7 +297,7 @@ void load_image(struct sfb_s* sfb, const char* filename, int upscale)
     if (suffix)
 	*suffix = '\0';
 
-    fb_gotoxy(sfb, 0, fb_h(sfb) - 12);
+    fb_gotoxy(sfb, 0, fb_h(sfb) - fb_font_h(sfb));
     fb_puts(sfb, buff);
 }
 

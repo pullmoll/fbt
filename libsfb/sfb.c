@@ -1138,6 +1138,29 @@ void fb_exit(sfb_t** sfb)
 }
 
 /**
+ * @brief Select one of the integrated fonts
+ * @param fb pointer to the frame buffer context
+ * @param efont font_e enumeration value
+ */
+void fb_set_font(sfb_t* fb, font_e efont)
+{
+    switch (efont) {
+    case Font_6x12:
+        fb->font = &font_6x12;
+        break;
+    case Font_8x13:
+        fb->font = &font_8x13;
+        break;
+    case Font_9x15:
+        fb->font = &font_9x15;
+        break;
+    case Font_10x20:
+        fb->font = &font_10x20;
+        break;
+    }
+}
+
+/**
  * @brief Return the framebuffer device name
  * @param fb pointer to the frame buffer context
  */
@@ -1183,8 +1206,7 @@ int fb_w(sfb_t* fb)
  */
 int fb_h(sfb_t* fb)
 {
-    if (!fb)
-	return 0;
+    CHECK_FB_RET(fb, 0);
     return fb->h;
 }
 
@@ -1216,6 +1238,26 @@ int fb_cy(sfb_t* fb)
 {
     CHECK_FB_RET(fb, 0);
     return fb->cursor_y;
+}
+
+/**
+ * @brief Return width of the font
+ * @param fb pointer to the frame buffer context
+ */
+int fb_font_w(sfb_t* fb)
+{
+    CHECK_FB_RET(fb, 0);
+    return fb->font->w;
+}
+
+/**
+ * @brief Return height of the font
+ * @param fb pointer to the frame buffer context
+ */
+int fb_font_h(sfb_t* fb)
+{
+    CHECK_FB_RET(fb, 0);
+    return fb->font->h;
 }
 
 /**

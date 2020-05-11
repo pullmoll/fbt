@@ -50,6 +50,9 @@ typedef unsigned color_t;
 
 #define RGB(r,g,b) (((color_t)r) << 16) | (((color_t)g) << 8) | (((color_t)b) << 0)
 
+/**
+ * @brief Enumeration of the X11 color names and their RGB values
+ */
 typedef enum {
     color_Alice_Blue           = RGB(0xF0,0xF8,0xFF),
     color_Antique_White        = RGB(0xFA,0xEB,0xD7),
@@ -198,17 +201,30 @@ typedef enum {
     color_Yellow_Green         = RGB(0x9A,0xCD,0x32),
 }   color_e;
 
-extern int fb_init(struct sfb_s** sfb, const char* devname);
-extern void fb_exit(struct sfb_s** sfb);
+/**
+ * @brief Enumeration of the integrated fonts
+ */
+typedef enum {
+    Font_6x12,
+    Font_8x13,
+    Font_9x15,
+    Font_10x20,
+}   font_e;
+
+extern int fb_init(struct sfb_s** psfb, const char* devname);
+extern void fb_exit(struct sfb_s** psfb);
+extern void fb_set_font(struct sfb_s* sfb, font_e efont);
 
 extern const char* fb_devname(struct sfb_s* sfb);
 extern int fb_x(struct sfb_s* sfb);
 extern int fb_y(struct sfb_s* sfb);
 extern int fb_w(struct sfb_s* sfb);
 extern int fb_h(struct sfb_s* sfb);
+extern int fb_bpp(struct sfb_s* sfb);
 extern int fb_cx(struct sfb_s* sfb);
 extern int fb_cy(struct sfb_s* sfb);
-extern int fb_bpp(struct sfb_s* sfb);
+extern int fb_font_w(struct sfb_s* sfb);
+extern int fb_font_h(struct sfb_s* sfb);
 extern void fb_gotoxy(struct sfb_s* sfb, int x, int y);
 extern int fb_opaque(struct sfb_s* sfb);
 extern color_t fb_bgcolor(struct sfb_s* sfb);
