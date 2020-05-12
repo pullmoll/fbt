@@ -1356,6 +1356,7 @@ color_t fb_rgb2pixel(sfb_t* fb, int r, int g, int b)
 /**
  * @brief Convert color_e value @p color to a pixel value (color_t)
  * @param fb pointer to the frame buffer context
+ * @param color color enumeration value
  * @return color_t pixel value for the frame buffer depth
  */
 color_t fb_color2pixel(sfb_t* fb, color_e color)

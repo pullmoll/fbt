@@ -319,7 +319,7 @@ int main(int argc, char** argv)
     const char* fbdev = DEFAULT_FBDEV;
     int nfiles = 0;
     int upscale = 0;
-    int us = 7500;
+    int us = 700;
 
     setlocale(LC_ALL, "C.UTF-8");
     srand(time(NULL));
