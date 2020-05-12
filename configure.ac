@@ -20,11 +20,12 @@ AC_PROG_MAKE_SET
 
 # Checks for libraries.
 AC_CHECK_LIB([gd], [gdVersionString])
+AC_CHECK_LIB([getopt], [getopt_long])
 
 # Checks for header files.
 AC_CHECK_HEADERS([fcntl.h locale.h stdio.h stdint.h stdlib.h string.h \
  sys/ioctl.h sys/mman.h sys/types.h sys/ioctl.h time.h unistd.h \
- linux/fb.h gd.h])
+ linux/fb.h getopt.h gd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_OFF_T

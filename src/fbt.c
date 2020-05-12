@@ -58,6 +58,9 @@
 #if defined(HAVE_LOCALE_H)
 #include <locale.h>
 #endif
+#if defined(HAVE_GETOPT_H)
+#include <getopt.h>
+#endif
 
 #if defined(HAVE_GD_H)
 #include <gd.h>
@@ -301,21 +304,32 @@ void load_image(struct sfb_s* sfb, const char* filename, int upscale)
     fb_puts(sfb, buff);
 }
 
+static const struct option longopts[] = {
+    { "fbdevice", required_argument,  NULL, 'f' },
+    { "help",     no_argument,        NULL, 'h' },
+    { "upscale",  no_argument,        NULL, 'u' },
+    { "verbose",  no_argument,        NULL, 'v' },
+    { "version",  no_argument,        NULL, 'V' },
+    { NULL, 0, NULL, 0 }
+};
+
 /**
  * @brief print usage information to stderr
  */
-void usage(char** argv)
+void usage(const char* program)
 {
-    const char* program = basename(argv[0]);
     fprintf(stderr, "Usage: %s [OPTIONS] <imagefile.ext>\n", program);
     fprintf(stderr, "Where [OPTIONS] may be one or more of:\n");
-    fprintf(stderr, "-u          Up scale small images to TFT size\n");
-    fprintf(stderr, "-v          Be verbose\n");
-    fprintf(stderr, "-fb=<dev>   Use frame buffer device <dev> (default %s)\n", DEFAULT_FBDEV);
+    fprintf(stderr, "-f, --fbdevice <dev>  Use frame buffer device <dev> (default %s)\n", DEFAULT_FBDEV);
+    fprintf(stderr, "-h, --help            Print this help\n");
+    fprintf(stderr, "-u, --upscale         Up scale small images to TFT size\n");
+    fprintf(stderr, "-v, --verbose         Be verbose\n");
+    fprintf(stderr, "-V, --version         Print %s version\n", program);
 }
 
 int main(int argc, char** argv)
 {
+    const char* program = basename(argv[0]);
     const char* fbdev = DEFAULT_FBDEV;
     int nfiles = 0;
     int upscale = 0;
@@ -324,19 +338,28 @@ int main(int argc, char** argv)
     setlocale(LC_ALL, "C.UTF-8");
     srand(time(NULL));
 
-    for (int i = 1; i < argc; i++) {
-	if (!strncmp("-fb=", argv[i], 4)) {
-	    fbdev = argv[i] + 4;
-	    continue;
+    int c;
+    while ((c = getopt_long(argc, argv, "f:uvV", longopts, NULL)) != -1) {
+    switch (c) {
+        case 'f':
+                fbdev = optarg;
+                break;
+	case 'u':
+		upscale = 1;
+		break;
+	case 'v':
+		verbose++;
+		break;
+	case 'V':
+		printf("%s\n", VERSION);
+		exit(EXIT_SUCCESS);
+	case '?':
+	case 'h':
+	default:
+		usage(program);
 	}
-	if (!strcmp(argv[i], "-u")) {
-	    upscale = 1;
-	    continue;
-	}
-	if (!strcmp(argv[i], "-v")) {
-	    verbose = 1;
-	    continue;
-	}
+    }
+    for (int i = optind; i < argc; i++) {
 	nfiles++;
     }
 
@@ -358,11 +381,11 @@ int main(int argc, char** argv)
 	test_lines(sfb, us);
 	test_text(sfb, us);
 	test_circles(sfb, us);
-	usage(argv);
+	usage(program);
 	return 1;
     }
 
-    for (int i = 1; i < argc; i++) {
+    for (int i = optind; i < argc; i++) {
 	if (argv[i][0] == '-')
 	    continue;
 	load_image(sfb, argv[i], upscale);

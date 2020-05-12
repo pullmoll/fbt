@@ -9,6 +9,9 @@
 /* Define to 1 if you have the <gd.h> header file. */
 #undef HAVE_GD_H
 
+/* Define to 1 if you have the <getopt.h> header file. */
+#undef HAVE_GETOPT_H
+
 /* Define to 1 if you have the `getpagesize' function. */
 #undef HAVE_GETPAGESIZE
 
@@ -17,6 +20,9 @@
 
 /* Define to 1 if you have the `gd' library (-lgd). */
 #undef HAVE_LIBGD
+
+/* Define to 1 if you have the `getopt' library (-lgetopt). */
+#undef HAVE_LIBGETOPT
 
 /* Define to 1 if you have the <linux/fb.h> header file. */
 #undef HAVE_LINUX_FB_H
